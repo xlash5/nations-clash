@@ -27,7 +27,7 @@ export interface GameState {
   ball: BallState
   score: { teamA: number; teamB: number }
   clock: number
-  phase: 'preMatch' | 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
+  phase: 'preMatch' | 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime' | 'freeKick'
 }
 
 export type GameStateSnapshot = GameState

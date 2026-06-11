@@ -530,4 +530,95 @@ describe('Match', () => {
       expect(homeControlled!.id).toBe('home-2')
     })
   })
+
+  describe('free kicks', () => {
+    const FREE_KICK_DIST = 9.15
+
+    function positionAllPlayers(team: typeof match.teamA, x: number, z: number): void {
+      for (const p of team.players) {
+        p.position = { x, y: 0, z }
+      }
+    }
+
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+    })
+
+    it('startFreeKick transitions phase to freeKick', () => {
+      ;(match as any).startFreeKick({ x: 10, y: 0, z: 20 }, 'home', 'away')
+      expect(match.phase).toBe('freeKick')
+    })
+
+    it('startFreeKick places ball at foul position', () => {
+      const foulPos = { x: 15, y: 0, z: -10 }
+      ;(match as any).startFreeKick(foulPos, 'home', 'away')
+      expect(match.ball.position).toEqual(foulPos)
+      expect(match.ball.velocity).toEqual({ x: 0, y: 0, z: 0 })
+    })
+
+    it('startFreeKick moves all opposing players at least 9.15m from ball', () => {
+      positionAllPlayers(match.teamB, 5, 5)
+      const foulPos = { x: 0, y: 0, z: 0 }
+      ;(match as any).startFreeKick(foulPos, 'home', 'away')
+
+      for (const player of match.teamB.players) {
+        const dx = player.position.x - foulPos.x
+        const dz = player.position.z - foulPos.z
+        const dist = Math.sqrt(dx * dx + dz * dz)
+        expect(dist).toBeGreaterThanOrEqual(FREE_KICK_DIST - 0.01)
+      }
+    })
+
+    it('startFreeKick assigns nearest outfield player on fouled team as taker', () => {
+      positionAllPlayers(match.teamA, 100, 100)
+      match.teamA.players[3].position = { x: 5, y: 0, z: 5 }
+      match.teamA.players[4].position = { x: 8, y: 0, z: 8 }
+
+      const foulPos = { x: 6, y: 0, z: 6 }
+      ;(match as any).startFreeKick(foulPos, 'home', 'away')
+
+      expect(match.teamA.humanControlledIndex).toBe(3)
+      expect(match.teamA.players[3].isHumanControlled).toBe(true)
+    })
+
+    it('tickFreeKick without kick stays in freeKick phase', () => {
+      ;(match as any).startFreeKick({ x: 0, y: 0, z: 0 }, 'home', 'away')
+      ;(match as any).tickFreeKick()
+      expect(match.phase).toBe('freeKick')
+    })
+
+    it('executeFreeKick resumes play after shoot', () => {
+      ;(match as any).startFreeKick({ x: 0, y: 0, z: 0 }, 'home', 'away')
+      const player = match.teamA.players[match.teamA.humanControlledIndex]
+      player.rotation = Math.PI / 4
+
+      ;(match as any).executeFreeKick({ type: 'shoot', power: 0.5 })
+      expect(match.phase).toBe('firstHalf')
+      expect(match.ball.velocity.x).not.toBe(0)
+      expect(match.ball.velocity.z).not.toBe(0)
+    })
+
+    it('executeFreeKick resumes play after pass', () => {
+      ;(match as any).startFreeKick({ x: 0, y: 0, z: 0 }, 'home', 'away')
+      ;(match as any).executeFreeKick({ type: 'pass', power: 0.3 })
+      expect(match.phase).toBe('firstHalf')
+    })
+
+    it('free kick sets lastTouch to kicker', () => {
+      ;(match as any).startFreeKick({ x: 0, y: 0, z: 0 }, 'home', 'away')
+      ;(match as any).executeFreeKick({ type: 'shoot', power: 0.5 })
+      expect(match.lastTouch).not.toBeNull()
+      expect(match.lastTouch!.team).toBe('home')
+    })
+
+    it('emits foul game:event with position and team data', () => {
+      ;(match as any).startFreeKick({ x: 10, y: 0, z: -15 }, 'home', 'away')
+      expect(io.to('ROOM01').emit).toHaveBeenCalledWith('game:event', {
+        type: 'foul',
+        position: { x: 10, y: 0, z: -15 },
+        foulingTeam: 'away',
+        fouledTeam: 'home',
+      })
+    })
+  })
 })

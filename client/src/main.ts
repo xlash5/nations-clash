@@ -31,10 +31,11 @@ const client = new SocketClient(SERVER_URL, {
   onPlayerLeft: () => {
     // handled via room:joined broadcast
   },
-  onMatchStart: () => {},
-  onGameState: () => {},
-  onGameGoal: () => {},
-})
+        onMatchStart: () => {},
+        onGameState: () => {},
+        onGameGoal: () => {},
+        onGameEvent: () => {},
+      })
 
 input.attach()
 
@@ -87,6 +88,46 @@ function createGoalFlash(): HTMLDivElement {
     transition: 'opacity 0.15s ease-in',
   })
   return el
+}
+
+function createFreeKickOverlay(): HTMLDivElement {
+  const el = document.createElement('div')
+  el.id = 'free-kick-overlay'
+  el.textContent = 'FREE KICK'
+  Object.assign(el.style, {
+    position: 'absolute',
+    top: '40%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    color: '#ffdd44',
+    fontFamily: 'monospace',
+    fontSize: '48px',
+    fontWeight: 'bold',
+    textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
+    pointerEvents: 'none',
+    zIndex: '200',
+    display: 'none',
+    opacity: '0',
+    transition: 'opacity 0.2s ease-in',
+  })
+  return el
+}
+
+function showFreeKickOverlay(container: HTMLElement): void {
+  const existing = container.querySelector('#free-kick-overlay') as HTMLDivElement
+  const overlay = existing ?? createFreeKickOverlay()
+  if (!existing) container.appendChild(overlay)
+
+  overlay.style.display = 'block'
+  overlay.style.opacity = '1'
+
+  clearTimeout((overlay as any)._fadeTimer)
+  ;(overlay as any)._fadeTimer = setTimeout(() => {
+    overlay.style.opacity = '0'
+    setTimeout(() => {
+      overlay.style.display = 'none'
+    }, 300)
+  }, 2000)
 }
 
 function showGoalFlash(container: HTMLElement, callback: () => void): void {
@@ -161,6 +202,11 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
         })
       })
     },
+    onGameEvent: (payload) => {
+      if (payload.type === 'foul') {
+        showFreeKickOverlay(gameContainer)
+      }
+    },
   })
 
   const intervalId = startGameInputLoop(hud)
@@ -183,6 +229,7 @@ function showMenu(): void {
         onMatchStart: () => {},
         onGameState: () => {},
         onGameGoal: () => {},
+        onGameEvent: () => {},
       })
       client.createRoom()
     },
@@ -195,6 +242,7 @@ function showMenu(): void {
         onMatchStart: () => {},
         onGameState: () => {},
         onGameGoal: () => {},
+        onGameEvent: () => {},
       })
       client.joinRoom(code)
     },
@@ -242,6 +290,7 @@ function showLobby(roomCode: string, players: { id: string; ready: boolean }[] =
     },
     onGameState: () => {},
     onGameGoal: () => {},
+    onGameEvent: () => {},
   })
 
   lobby.setRoomCode(roomCode)
