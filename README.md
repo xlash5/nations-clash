@@ -18,7 +18,7 @@ football/
 │   │       ├── Team.ts      # Team data structure (11 players, score)
 │   │       ├── physics.ts   # Ball physics engine
 │   │       ├── ai.ts        # AI behaviour (stub)
-│   │       ├── collision.ts # Collision detection (stub)
+│   │       ├── collision.ts # Collision detection (player-ball, ball-goal, player-player)
 │   │       └── goalDetection.ts # Goal detection (stub)
 │   └── package.json
 ├── client/          # Vite + Three.js frontend
@@ -175,6 +175,30 @@ player.applyInput(playerInput, cameraSide, delta)
 player.tick(delta)
 ```
 
+## Collision Detection
+
+Server-side collision detection in `server/src/match/collision.ts`:
+
+- **Player-Ball** (sphere-sphere): when the ball overlaps a player's collision radius (0.5 m), the ball deflects away with a coefficient of restitution of 0.7
+- **Dribble**: the nearest player to the ball within ~1 m is marked `hasBall`, and the ball sticks near their feet at a fixed offset (0.6 m behind the player)
+- **Ball-Goal Frame** (sphere-cylinder): goal posts (vertical cylinders) and crossbar (horizontal cylinder) reflect the ball with restitution 0.7
+- **Player-Player** (sphere-sphere): overlapping players are pushed apart along the vector between their centres
+- **Goal Scored**: a ball that fully crosses the goal line within goal width and height awards a goal and resets to the centre spot
+
+### Exported functions
+
+| Function | Description |
+|---|---|
+| `checkPlayerBallCollision(playerPos, ballPos)` | Sphere-sphere overlap check; returns collision normal + penetration |
+| `resolvePlayerBallCollision(ball, collision, hasBall, playerPos)` | Deflects ball or attaches for dribble |
+| `checkBallGoalCollision(ballPos)` | Sphere-cylinder check against post/crossbar geometry |
+| `checkGoalScored(ballPos)` | Returns true if ball crossed the goal line within frame |
+| `resolvePlayerPlayerCollision(p1Pos, p2Pos)` | Separates two overlapping players |
+| `findNearestPlayer(players, ballPos)` | Finds closest player to ball (for dribble assignment) |
+| `updateCollisions(match, state)` | Impure wrapper called from Match tick loop |
+
+Ball-player collision, deflection, and goal-post ricochet are covered by **25 unit tests**.
+
 ## Network Events
 
 | Event | Direction | Payload |
@@ -197,14 +221,14 @@ The authoritative game simulation runs at **60 ticks/sec** in `server/src/match/
 - **Tick rate**: `setInterval` at 16.67ms interval
 - **Clock**: configurable countdown (time mode) or count-up (goals mode)
 - **Phases**: `firstHalf` → `halftime` → `secondHalf` → `fulltime`
-- **Hooks**: each tick calls physics, AI, collision, and goal detection stubs (filled in by subsequent tasks)
+- **Hooks**: each tick calls physics, AI, collision, and goal detection — collision is fully implemented (player-ball sphere-sphere, ball-goal sphere-AABB, player-player push-apart), goal detection is a stub (phase 3)
 - **Broadcasting**: after each tick, a `game:state` snapshot is sent to both clients via Socket.io
 
 ### Game State Snapshot
 
 ```ts
 {
-  players: { id, team, position, velocity, rotation, stamina, isHumanControlled, isGk }[]
+  players: { id, team, position, velocity, rotation, stamina, isHumanControlled, isGk, hasBall }[]
   ball:    { position, velocity, spin }
   score:   { teamA: number, teamB: number }
   clock:   number

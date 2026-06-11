@@ -13,6 +13,7 @@ export interface PlayerState {
   stamina: number
   isHumanControlled: boolean
   isGk: boolean
+  hasBall: boolean
 }
 
 export interface BallState {
