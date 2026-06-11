@@ -309,20 +309,6 @@ export function updateCollisions(match: Match, _state: GameState): void {
     }
   }
 
-  if (checkGoalScored(ball.position)) {
-    if (ball.position.z > 0) {
-      match.score.teamA++
-    } else {
-      match.score.teamB++
-    }
-    match.ball = {
-      position: { x: 0, y: 0, z: 0 },
-      velocity: { x: 0, y: 0, z: 0 },
-      spin: { x: 0, y: 0, z: 0 },
-    }
-    return
-  }
-
   match.ball.position = ball.position
   match.ball.velocity = ball.velocity
 }

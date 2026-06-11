@@ -5,9 +5,16 @@ import { Team } from './Team.js'
 import { updatePhysics, kick } from './physics.js'
 import { updateAI } from './ai.js'
 import { updateCollisions } from './collision.js'
-import { checkGoal } from './goalDetection.js'
+import { checkGoal, type GoalResult } from './goalDetection.js'
 
-export type MatchPhase = 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
+export type MatchPhase = 'preMatch' | 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
+
+export interface GoalLog {
+  playerId: string | null
+  team: 'home' | 'away'
+  time: number
+  isOwnGoal: boolean
+}
 
 export class Match {
   config: MatchConfig
@@ -17,11 +24,19 @@ export class Match {
   teamA: Team
   teamB: Team
   ball: { position: Position; velocity: Position; spin: Position }
+  goals: GoalLog[]
 
   private io: Server
   private roomCode: string
   private inputs: Map<string, PlayerInput>
   private intervalId: ReturnType<typeof setInterval> | null
+  private lastTouch: { playerId: string; team: 'home' | 'away' } | null
+  private goalCooldown: boolean
+  private preMatchCountdown: number
+  private lastEmittedCountdown: number
+  private halftimeTimer: number
+  private goalPauseTimer: number
+  private kickoffSide: 'home' | 'away'
 
   constructor(
     io: Server,
@@ -33,11 +48,19 @@ export class Match {
     this.io = io
     this.roomCode = roomCode
     this.config = config
-    this.clock = config.mode === 'time' ? config.duration : 0
+    this.clock = 0
     this.score = { teamA: 0, teamB: 0 }
-    this.phase = 'firstHalf'
+    this.phase = 'preMatch'
     this.intervalId = null
     this.inputs = new Map()
+    this.lastTouch = null
+    this.goalCooldown = false
+    this.goals = []
+    this.preMatchCountdown = 3
+    this.lastEmittedCountdown = 4
+    this.halftimeTimer = 0
+    this.goalPauseTimer = 0
+    this.kickoffSide = 'home'
 
     this.teamA = new Team('home', hostPlayerId)
     this.teamB = new Team('away', guestPlayerId)
@@ -70,7 +93,50 @@ export class Match {
   }
 
   private tick(): void {
-    if (this.phase === 'fulltime' || this.phase === 'halftime') return
+    switch (this.phase) {
+      case 'preMatch':
+        this.tickPreMatch()
+        break
+      case 'firstHalf':
+      case 'secondHalf':
+        this.tickPlayingHalf()
+        break
+      case 'halftime':
+        this.tickHalftime()
+        break
+      case 'fulltime':
+        this.broadcast()
+        break
+    }
+  }
+
+  private tickPreMatch(): void {
+    const currentSecond = Math.ceil(this.preMatchCountdown)
+    if (currentSecond < this.lastEmittedCountdown && currentSecond >= 1) {
+      this.emitEvent('countdown', { value: currentSecond })
+      this.lastEmittedCountdown = currentSecond
+    }
+    this.preMatchCountdown -= TICK_S
+
+    if (this.preMatchCountdown <= 1e-10) {
+      this.phase = 'firstHalf'
+      this.clock = this.config.mode === 'time' ? this.config.duration : 0
+      this.emitEvent('kickoff')
+      this.setupKickoff()
+    }
+
+    this.broadcast()
+  }
+
+  private tickPlayingHalf(): void {
+    if (this.goalPauseTimer > 0) {
+      this.goalPauseTimer -= TICK_S
+      if (this.goalPauseTimer <= 1e-10) {
+        this.setupKickoff()
+      }
+      this.broadcast()
+      return
+    }
 
     this.applyPlayerInputs()
     this.processKickRequests()
@@ -80,7 +146,15 @@ export class Match {
     updatePhysics(this, state)
     updateAI(this, state)
     updateCollisions(this, state)
-    checkGoal(this, state)
+
+    this.updateLastTouchFromCollisions()
+
+    if (!this.goalCooldown) {
+      const goal = checkGoal(this.ball.position, this.lastTouch)
+      if (goal) {
+        this.awardGoal(goal)
+      }
+    }
 
     if (this.config.mode === 'time') {
       this.clock = Math.max(0, this.clock - TICK_S)
@@ -88,15 +162,147 @@ export class Match {
       this.clock += TICK_S
     }
 
-    if (this.config.mode === 'time' && this.clock <= 0) {
-      this.phase = 'fulltime'
+    this.checkPhaseTransition()
+
+    this.broadcast()
+  }
+
+  private tickHalftime(): void {
+    this.halftimeTimer -= TICK_S
+    if (this.halftimeTimer <= 1e-10) {
+      this.phase = 'secondHalf'
+      this.clock = this.config.mode === 'time' ? this.config.duration : 0
+      this.emitEvent('secondHalf')
+      this.setupKickoff()
+    }
+    this.broadcast()
+  }
+
+  private checkPhaseTransition(): void {
+    if (this.config.mode === 'time') {
+      if (this.clock <= 0) {
+        if (this.phase === 'firstHalf') {
+          this.phase = 'halftime'
+          this.halftimeTimer = 15
+          this.emitEvent('halftime')
+        } else if (this.phase === 'secondHalf') {
+          this.phase = 'fulltime'
+          this.emitEvent('fulltime')
+        }
+      }
     } else if (this.config.mode === 'goals') {
       if (this.score.teamA >= this.config.goalsToWin || this.score.teamB >= this.config.goalsToWin) {
         this.phase = 'fulltime'
+        this.emitEvent('fulltime')
       }
     }
+  }
 
-    this.broadcast()
+  private setupKickoff(): void {
+    this.kickoffSide = this.lastTouch
+      ? (this.lastTouch.team === 'home' ? 'away' : 'home')
+      : 'home'
+
+    this.ball = {
+      position: { x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      spin: { x: 0, y: 0, z: 0 },
+    }
+
+    const homeFormation = this.getFormationPositions(-1)
+    const awayFormation = this.getFormationPositions(1)
+
+    for (let i = 0; i < this.teamA.players.length; i++) {
+      const pos = homeFormation[i] ?? { x: 0, y: 0, z: 0 }
+      this.teamA.players[i].position = { ...pos }
+      this.teamA.players[i].velocity = { x: 0, y: 0, z: 0 }
+      this.teamA.players[i].hasBall = false
+    }
+
+    for (let i = 0; i < this.teamB.players.length; i++) {
+      const pos = awayFormation[i] ?? { x: 0, y: 0, z: 0 }
+      this.teamB.players[i].position = { ...pos }
+      this.teamB.players[i].velocity = { x: 0, y: 0, z: 0 }
+      this.teamB.players[i].hasBall = false
+    }
+
+    this.goalCooldown = false
+    this.lastTouch = null
+  }
+
+  private getFormationPositions(side: -1 | 1): Position[] {
+    const positions: Position[] = []
+    const pitchHalf = 52.5
+    const pitchWidth = 34
+
+    positions.push({ x: 0, y: 0, z: side * pitchHalf * 0.95 })
+
+    const formation: [number, number][] = [
+      [-10, 30], [0, 30], [10, 30],
+      [-20, 10], [-7, 10], [7, 10], [20, 10],
+      [-15, -10], [0, -20], [15, -10],
+    ]
+
+    const halfLen = pitchHalf * 0.8
+
+    for (const [relX, relZ] of formation) {
+      positions.push({
+        x: relX * (pitchWidth / 34),
+        y: 0,
+        z: side * (relZ / 30 * halfLen),
+      })
+    }
+
+    return positions
+  }
+
+  private updateLastTouchFromCollisions(): void {
+    const allPlayers = [...this.teamA.players, ...this.teamB.players]
+    for (const player of allPlayers) {
+      if (player.hasBall) {
+        this.lastTouch = { playerId: player.id, team: player.team }
+        return
+      }
+    }
+  }
+
+  private awardGoal(goal: GoalResult): void {
+    const isTeamA = goal.team === 'home'
+
+    if (isTeamA) {
+      this.score.teamA++
+    } else {
+      this.score.teamB++
+    }
+
+    this.goals.push({
+      playerId: goal.scorer,
+      team: goal.team,
+      time: this.config.mode === 'time' ? this.config.duration - this.clock : this.clock,
+      isOwnGoal: goal.isOwnGoal,
+    })
+
+    this.goalCooldown = true
+    this.lastTouch = null
+
+    this.goalPauseTimer = 3.0
+
+    this.ball = {
+      position: { x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      spin: { x: 0, y: 0, z: 0 },
+    }
+
+    this.io.to(this.roomCode).emit('game:goal', {
+      scorer: goal.scorer,
+      team: goal.team,
+      isOwnGoal: goal.isOwnGoal,
+      replayData: {},
+    })
+  }
+
+  private emitEvent(type: string, data?: Record<string, unknown>): void {
+    this.io.to(this.roomCode).emit('game:event', { type, ...data })
   }
 
   private broadcast(): void {
@@ -109,7 +315,7 @@ export class Match {
       if (!input) continue
       const player = team.players[1]
       if (!player) continue
-      const cameraSide: -1 | 1 = team.id === 'home' ? -1 : 1
+      const cameraSide: -1 | 1 = this.phase === 'secondHalf' ? 1 : team.id === 'home' ? -1 : 1
       player.applyInput(input, cameraSide, TICK_S)
     }
   }
@@ -120,6 +326,9 @@ export class Match {
       if (!player) continue
       const kickRequest = player.consumeKickRequest()
       if (!kickRequest) continue
+
+      this.lastTouch = { playerId: player.id, team: player.team }
+      this.goalCooldown = false
 
       const facingDir = {
         x: Math.sin(player.rotation),

@@ -27,7 +27,7 @@ export interface GameState {
   ball: BallState
   score: { teamA: number; teamB: number }
   clock: number
-  phase: 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
+  phase: 'preMatch' | 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
 }
 
 export interface MatchConfig {
