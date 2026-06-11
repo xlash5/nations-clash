@@ -171,6 +171,7 @@ export class Match {
         stamina: p.stamina,
         isHumanControlled: p.isHumanControlled,
         isGk: p.isGk,
+        hasBall: p.hasBall,
       })),
       ball: {
         position: { ...this.ball.position },
