@@ -61,6 +61,7 @@ export interface SocketClientCallbacks {
 export class SocketClient {
   private socket: Socket
   private callbacks: SocketClientCallbacks
+  private _latency: number = 0
 
   constructor(serverUrl: string, callbacks: SocketClientCallbacks) {
     this.callbacks = callbacks
@@ -77,6 +78,14 @@ export class SocketClient {
     this.socket.on('game:state', (payload) => this.callbacks.onGameState(payload))
     this.socket.on('game:goal', (payload) => this.callbacks.onGameGoal(payload))
     this.socket.on('game:event', (payload) => this.callbacks.onGameEvent(payload))
+
+    this.socket.on('pong', (latency: number) => {
+      this._latency = latency
+    })
+  }
+
+  getLatency(): number {
+    return this._latency
   }
 
   setCallbacks(callbacks: SocketClientCallbacks): void {

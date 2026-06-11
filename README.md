@@ -40,6 +40,8 @@ football/
 │   │       ├── BallMesh.ts        # Icosahedron soccer ball
 │   │       ├── CameraController.ts # Tele-broadcast camera with lerp + flip
 │   │       ├── Input.ts           # Keyboard capture + bitmask packing
+│   │       ├── HUD.ts             # Score, clock, power bar, stamina, ping, mini-map
+│   │       ├── HUD.test.ts        # 24 DOM-based HUD unit tests
 │   │       └── ReplayController.ts # Slow-motion goal replay playback
 │   ├── public/audio/ # SFX files (placeholder)
 │   ├── index.html
@@ -175,6 +177,20 @@ input.attach()
 const bitmask = input.getBitmask()
 const isShooting = !!(bitmask & KEY_SHOOT)
 ```
+
+## In-Game HUD
+
+The heads-up display in `client/src/game/HUD.ts` renders as an HTML/CSS overlay on top of the 3D canvas:
+
+- **Score** (`#hud-score`): top centre, large text — `2 — 1`, updated every tick via `updateScore(teamA, teamB)`
+- **Match clock** (`#hud-clock`): below the score, `MM:SS` format (e.g. `1:30` for 90 seconds), updated every tick via `updateClock(totalSeconds)`
+- **Power bar**: bottom centre, a horizontal bar (`150×12 px`) that fills when charging shoot or pass. Colour gradient green → yellow → red as power increases. Visibility controlled by `showPowerBar(visible)`. Width set by `setPowerBar(fraction)`.
+- **Active player indicator** (`#hud-active-player`): below the clock, shows `▶ playerId` with a team-coloured border. Updated via `setActivePlayer(playerId, teamColor)`.
+- **Stamina bar** (`#hud-stamina`): below the active player indicator, a small horizontal bar (`100×6 px`) showing current stamina percentage. Colour: green (>50%), yellow (25–50%), red (<25%). Updated via `setStamina(fraction)`.
+- **Ping indicator** (`#hud-ping`): top-right corner, e.g. `42ms`. Colour-coded green (<50ms), yellow (50–100ms), red (>100ms). Updated via `setPing(ms)`. Latency data from `SocketClient.getLatency()` (tracked via Socket.io's `pong` event).
+- **Mini-map** (`#hud-minimap`): bottom-left corner, a `150×100` Canvas 2D pitch showing all 22 players as coloured dots (home red, away blue, GK yellow, human player outlined in white). Toggle visibility with the `M` key. Updated via `updateMiniMap(players)`.
+
+All HUD elements are mounted as children of `#hud-container` (an absolute overlay spanning the game container). 24 unit tests cover all elements.
 
 ## Charge-Based Kick System (Shoot & Pass)
 

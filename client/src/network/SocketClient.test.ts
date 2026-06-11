@@ -13,6 +13,7 @@ vi.mock('socket.io-client', () => ({
     on: mockOn,
     emit: mockEmit,
     disconnect: mockDisconnect,
+    io: { on: mockOn },
   }),
 }))
 
@@ -142,6 +143,12 @@ describe('SocketClient', () => {
     }
     mockOnHandlers['bothTeamsSelected'](payload)
     expect(callbacks.onBothTeamsSelected).toHaveBeenCalledWith(payload)
+  })
+
+  it('tracks latency via pong event', () => {
+    const client = new SocketClient('http://localhost:3001', callbacks)
+    mockOnHandlers['pong'](42)
+    expect(client.getLatency()).toBe(42)
   })
 
   it('setCallbacks updates active callbacks', () => {
