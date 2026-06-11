@@ -2,7 +2,10 @@
   "name": "nations-clash",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["server", "client"],
+  "workspaces": [
+    "server",
+    "client"
+  ],
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
     "test": "vitest run",
@@ -12,6 +15,7 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.0",
+    "jsdom": "^22.1.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"
   }

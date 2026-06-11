@@ -17,6 +17,7 @@ export default defineWorkspace([
     test: {
       name: 'client',
       include: ['client/**/*.test.ts'],
+      environment: 'jsdom',
     },
   },
 ])
