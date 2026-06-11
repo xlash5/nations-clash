@@ -1,0 +1,44 @@
+name: CD
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Deploy to Railway
+        uses: docker://ghcr.io/railwayapp/cli:latest
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        with:
+          entrypoint: railway
+          args: up --detach
+
+      - name: Post-deploy health check
+        run: |
+          echo "Waiting for deployment to settle..."
+          sleep 15
+          DOMAIN=$(docker run --rm \
+            -e RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}" \
+            ghcr.io/railwayapp/cli:latest \
+            domain 2>/dev/null | tr -d '[:space:]')
+          if [ -n "$DOMAIN" ]; then
+            echo "Health-checking https://$DOMAIN"
+            curl -f -s -o /dev/null "https://$DOMAIN" && echo "Health check passed"
+          else
+            echo "No Railway domain found — deployment may still be in progress."
+          fi

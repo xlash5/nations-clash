@@ -83,6 +83,41 @@ The Dockerfile uses a multi-stage build:
 2. **build-server** — installs server dependencies and compiles TypeScript
 3. **production** — copies compiled server and built client into a minimal `node:18-alpine` image; server serves the client as static files
 
+## Railway Deployment
+
+The project is configured for deployment on Railway via `railway.json` at the project root:
+
+- **Builder**: Docker (uses the project's `Dockerfile`)
+- **Health check path**: `/`
+- **Environment variables**: `PORT` is set automatically by Railway; the server falls back to `3000` if unset
+
+### Deploying
+
+```bash
+# Install Railway CLI
+npm i -g @railway/cli
+
+# Login (opens browser)
+railway login
+
+# Link to project
+railway link
+
+# Deploy
+railway up --detach
+```
+
+### Automatic Deploy (CI/CD)
+
+The CD workflow (`.github/workflows/cd.yml`) deploys automatically on every push to `master`:
+
+1. `npm ci` — install dependencies
+2. `npm run build` — compile TypeScript and bundle the client
+3. Deploy to Railway via the official Railway CLI Docker image
+4. Post-deploy health check curls the Railway URL
+
+The CD pipeline requires `RAILWAY_TOKEN` to be set as a GitHub Actions secret in the repository.
+
 ### How to Play Screen
 
 A controls reference screen available from the Main Menu. Shows a table of all keyboard controls and explanations of charge-based kicking, player switching, and the stamina system.
@@ -734,9 +769,9 @@ GitHub Actions workflows are defined in `.github/workflows/`:
 | Workflow | Trigger | Steps |
 |---|---|---|
 | **CI** | Every push & PR (all branches) | `npm ci` → typecheck → lint → test → build |
-| **CD** | Push to `master` | `npm ci` → build → deploy to Railway |
+| **CD** | Push to `master` | `npm ci` → build → deploy to Railway → post-deploy health check |
 
-CI runs on Node 18 and 20 in parallel. CD requires `RAILWAY_TOKEN` secret to be set in the GitHub repository.
+CD requires `RAILWAY_TOKEN` secret to be set in the GitHub repository.
 
 ## Tech Stack
 
