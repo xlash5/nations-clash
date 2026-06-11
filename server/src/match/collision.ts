@@ -3,6 +3,7 @@ import { BALL_RADIUS } from './physics.js'
 import type { Match } from './Match.js'
 
 export const PITCH_HALF_LENGTH = 52.5
+export const PITCH_HALF_WIDTH = 34
 export const PLAYER_RADIUS = 0.5
 export const GOAL_POST_RADIUS = 0.08
 export const GOAL_WIDTH = 7.32
@@ -193,6 +194,12 @@ export function checkGoalScored(
   if (ballPos.y > GOAL_HEIGHT) return false
 
   return true
+}
+
+export function checkBallOutOfBounds(
+  ballPos: Position,
+): boolean {
+  return Math.abs(ballPos.x) > PITCH_HALF_WIDTH || Math.abs(ballPos.z) > PITCH_HALF_LENGTH
 }
 
 export function resolvePlayerPlayerCollision(

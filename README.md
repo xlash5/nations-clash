@@ -617,6 +617,39 @@ Players can disconnect mid-match (closed tab, network drop, crash). The server h
 
 18 disconnect handling tests cover: disconnect marking, match pause, timer countdown, reconnect cancellation, timeout → fulltime with winner, lobby disconnect, session transfer via `updatePlayerId`, and reconnection before expiry preventing abandonment.
 
+## Edge Cases
+
+Server-side handling of match boundary conditions in `server/src/match/`:
+
+### Own Goals
+
+Goal detection in `goalDetection.ts` determines the scoring team based on which side of the pitch the ball crosses. If `lastTouch.team` does not match the scoring team, the goal is marked as an own goal (`isOwnGoal: true`, `scorer: null`). The `game:goal` event includes `isOwnGoal` so the client can display "(own goal)" next to the scorer name.
+
+### Ball Out of Bounds
+
+In `collision.ts`, `checkBallOutOfBounds()` returns true when the ball crosses the touchline (`|x| > 34`) or the goal line without scoring (`|z| > 52.5` beyond goal dimensions). When detected in `Match.ts`, the ball resets to the centre spot, `setupKickoff()` is called with possession awarded to the non-touching team (based on `lastTouch`), and a `game:event { type: 'ballOutOfBounds' }` is emitted.
+
+### Extended Play (Overtime)
+
+When the clock reaches 0 in the second half, the match enters **extended play** rather than ending immediately. The simulation continues running with the clock frozen at 0. Extended play ends on the next natural stoppage:
+
+- **Goal scored**: the goal counts and the match transitions to fulltime
+- **Ball out of bounds**: the match transitions to fulltime immediately
+
+This ensures a goal scored on a ball that was in flight when the clock expired is counted, matching real football rules.
+
+### Match Start Guard
+
+During the pre-match countdown in `tickPreMatch()`, if either player has disconnected (`disconnectedPlayers.size > 0`), the countdown is paused and the match does not start. The countdown resumes only when both players are reconnected.
+
+### Double Goal Prevention
+
+A `goalCooldown` flag is set to `true` immediately after a goal is scored (`awardGoal()`). Goal detection is skipped while the flag is active. The flag is cleared when `setupKickoff()` runs, which occurs after the 3-second goal pause timer elapses. This prevents scenarios where a ball rebounding near the goal line could be counted twice.
+
+### Test Coverage
+
+10 edge case tests cover: ball out of bounds (touchline, goal line, within bounds), extended play (starts on clock=0, goal during extended play counts, out-of-bounds during extended play ends match, fulltime event emitted, firstHalf unaffected), double goal prevention (cooldown set/cleared), and match start guard (disconnect blocks transition).
+
 ## Network Events
 
 | Event | Direction | Payload |
