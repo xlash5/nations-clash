@@ -47,14 +47,14 @@ function startGameInputLoop(hud: HUD): ReturnType<typeof setInterval> {
       }
       const elapsed = (performance.now() - chargeStartTime) / 1000
       const power = Math.min(1, elapsed)
-      hud.show()
-      hud.setPower(power)
+      hud.showPowerBar(true)
+      hud.setPowerBar(power)
     } else {
       if (chargeType) {
         chargeType = null
         chargeStartTime = 0
       }
-      hud.hide()
+      hud.showPowerBar(false)
     }
 
     client.sendInput(bitmask, chargeType, chargeStartTime)
@@ -190,7 +190,12 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
       const controlled = state.players.find((p) => p.isHumanControlled)
       if (controlled) {
         hud.setActivePlayer(controlled.id, teamColors[controlled.team] ?? '#ffffff')
+        hud.setStamina(controlled.stamina / 100)
       }
+      hud.updateScore(state.score.teamA, state.score.teamB)
+      hud.updateClock(state.clock)
+      hud.updateMiniMap(state.players)
+      hud.setPing(client.getLatency())
     },
     onGameGoal: (payload: GoalEventPayload) => {
       showGoalFlash(gameContainer, () => {
