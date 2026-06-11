@@ -21,7 +21,8 @@ football/
 │   │   ├── ui/
 │   │   │   ├── MainMenu.ts   # Create/Join room screen
 │   │   │   └── Lobby.ts      # Player list + ready button
-│   │   └── ... (game modules)
+│   │   └── game/
+│   │       └── Pitch.ts  # 3D pitch, goals, stadium shell, lighting
 │   ├── public/audio/ # SFX files (placeholder)
 │   ├── index.html
 │   └── package.json
@@ -48,6 +49,16 @@ npm run typecheck  # TypeScript compiler check
 3. Player B enters the code and clicks **Join Room**
 4. Both players see the lobby with their IDs and can click **Ready**
 5. When both are ready (future: transition to team select)
+
+## 3D Pitch
+
+Procedural Three.js geometry composed in `client/src/game/Pitch.ts`:
+
+- **Pitch surface**: green rectangle (105 × 68 units) with white markings
+- **Markings**: halfway line, centre circle + spot, penalty areas, goal areas, penalty spots, penalty arcs, corner arcs
+- **Goals**: white box-frame (posts + crossbar) with semi-transparent wireframe net (back, top, left, right panels)
+- **Stadium shell**: four low-poly box stands around the pitch
+- **Lighting**: ambient light + directional sun + fill light
 
 ## Network Events
 
