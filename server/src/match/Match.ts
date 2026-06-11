@@ -2,6 +2,7 @@ import { Server } from 'socket.io'
 import type { MatchConfig, GameState, GameStateSnapshot, PlayerInput, Position } from '../../../shared/types.js'
 import { TICK_MS, TICK_S } from '../../../shared/types.js'
 import { Team } from './Team.js'
+import { Player } from './Player.js'
 import { updatePhysics, kick } from './physics.js'
 import { updateAI } from './ai.js'
 import { getAbsoluteFormationPositions } from '../data/formations.js'
@@ -40,6 +41,7 @@ export class Match {
   private kickoffSide: 'home' | 'away'
   private replayBuffer: GameStateSnapshot[]
   private readonly MAX_REPLAY_SNAPSHOTS = 300
+  private prevSwitchPlayer: Map<string, boolean>
 
   constructor(
     io: Server,
@@ -65,6 +67,7 @@ export class Match {
     this.goalPauseTimer = 0
     this.kickoffSide = 'home'
     this.replayBuffer = []
+    this.prevSwitchPlayer = new Map()
 
     this.teamA = new Team('home', hostPlayerId)
     this.teamB = new Team('away', guestPlayerId)
@@ -295,16 +298,22 @@ export class Match {
     for (const team of [this.teamA, this.teamB]) {
       const input = this.inputs.get(team.humanPlayerId)
       if (!input) continue
-      const player = team.players[1]
+      const player = team.players[team.humanControlledIndex]
       if (!player) continue
       const cameraSide: -1 | 1 = this.phase === 'secondHalf' ? 1 : team.id === 'home' ? -1 : 1
       player.applyInput(input, cameraSide, TICK_S)
+
+      const prev = this.prevSwitchPlayer.get(team.humanPlayerId) ?? false
+      if (input.switchPlayer && !prev) {
+        this.switchPlayer(team)
+      }
+      this.prevSwitchPlayer.set(team.humanPlayerId, input.switchPlayer)
     }
   }
 
   private processKickRequests(): void {
     for (const team of [this.teamA, this.teamB]) {
-      const player = team.players[1]
+      const player = team.players[team.humanControlledIndex]
       if (!player) continue
       const kickRequest = player.consumeKickRequest()
       if (!kickRequest) continue
@@ -358,6 +367,63 @@ export class Match {
 
   getReplayData(): { snapshots: GameStateSnapshot[] } {
     return { snapshots: [...this.replayBuffer] }
+  }
+
+  private getNearestOutfieldPlayer(team: Team): Player | null {
+    const outfield = team.players.filter((p) => !p.isGk)
+    if (outfield.length === 0) return null
+
+    const bx = this.ball.position.x
+    const bz = this.ball.position.z
+
+    let nearest: Player | null = null
+    let nearestDist = Infinity
+
+    for (const p of outfield) {
+      const dx = p.position.x - bx
+      const dz = p.position.z - bz
+      const dist = dx * dx + dz * dz
+      if (dist < nearestDist) {
+        nearestDist = dist
+        nearest = p
+      }
+    }
+
+    return nearest
+  }
+
+  private switchPlayer(team: Team): void {
+    const currentIdx = team.humanControlledIndex
+    const current = team.players[currentIdx]
+    if (!current) return
+
+    const outfield = team.players
+      .map((p, i) => ({ player: p, index: i }))
+      .filter(({ player }) => !player.isGk)
+
+    if (outfield.length <= 1) return
+
+    const bx = this.ball.position.x
+    const bz = this.ball.position.z
+
+    outfield.sort((a, b) => {
+      const daX = a.player.position.x - bx
+      const daZ = a.player.position.z - bz
+      const dbX = b.player.position.x - bx
+      const dbZ = b.player.position.z - bz
+      return daX * daX + daZ * daZ - (dbX * dbX + dbZ * dbZ)
+    })
+
+    let targetIdx: number
+    if (outfield[0].index === currentIdx && outfield.length > 1) {
+      targetIdx = outfield[1].index
+    } else {
+      targetIdx = outfield[0].index
+    }
+
+    current.isHumanControlled = false
+    team.players[targetIdx].isHumanControlled = true
+    team.humanControlledIndex = targetIdx
   }
 
   getState(): GameState {
