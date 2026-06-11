@@ -8,6 +8,8 @@ import { updateAI } from './ai.js'
 import { getAbsoluteFormationPositions } from '../data/formations.js'
 import { updateCollisions } from './collision.js'
 import { checkGoal, type GoalResult } from './goalDetection.js'
+import { standingTackle, slideTackle, shouldFoul } from './tackling.js'
+import { SLIDE_DURATION } from './Player.js'
 
 export type MatchPhase = 'preMatch' | 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
 
@@ -147,6 +149,7 @@ export class Match {
 
     this.applyPlayerInputs()
     this.processKickRequests()
+    this.processTackleRequests()
 
     const state = this.getState()
 
@@ -354,6 +357,61 @@ export class Match {
           }
         }
         this.ball = kick(this.ball, kickDir, kickRequest.power)
+      }
+    }
+  }
+
+  private processTackleRequests(): void {
+    const allPlayers = [...this.teamA.players, ...this.teamB.players]
+
+    for (const team of [this.teamA, this.teamB]) {
+      const player = team.players[team.humanControlledIndex]
+      if (!player) continue
+      const tackleRequest = player.consumeTackleRequest()
+      if (!tackleRequest) continue
+
+      if (tackleRequest.type === 'slide' && !player.isSliding) {
+        player.isSliding = true
+        player.slideTimer = SLIDE_DURATION
+        const dirLen = Math.sqrt(player.velocity.x ** 2 + player.velocity.z ** 2)
+        if (dirLen > 0.01) {
+          player.slideDirection = {
+            x: player.velocity.x / dirLen,
+            y: 0,
+            z: player.velocity.z / dirLen,
+          }
+        } else {
+          player.slideDirection = {
+            x: Math.sin(player.rotation),
+            y: 0,
+            z: Math.cos(player.rotation),
+          }
+        }
+      }
+
+      player.tackleCooldownTimer = 0.5
+
+      const tackledOpponent = allPlayers.find((p) => p.team !== player.team && p.hasBall)
+      if (!tackledOpponent) {
+        if (shouldFoul(tackleRequest.type)) {
+          this.io.to(this.roomCode).emit('game:event', { type: 'foul' })
+        }
+        continue
+      }
+
+      const tacklerPos = player.position
+      const opponentPos = tackledOpponent.position
+      const result = tackleRequest.type === 'standing'
+        ? standingTackle(tacklerPos, opponentPos, tackledOpponent.hasBall)
+        : slideTackle(tacklerPos, opponentPos, tackledOpponent.hasBall)
+
+      if (result.success) {
+        tackledOpponent.hasBall = false
+        if (result.ballPopDirection) {
+          this.ball.velocity = { ...result.ballPopDirection }
+        }
+      } else if (result.foul) {
+        this.io.to(this.roomCode).emit('game:event', { type: 'foul' })
       }
     }
   }

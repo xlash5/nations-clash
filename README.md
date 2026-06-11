@@ -342,6 +342,39 @@ Server-side collision detection in `server/src/match/collision.ts`:
 
 Ball-player collision, deflection, and goal-post ricochet are covered by **25 unit tests**.
 
+## Tackling System
+
+Standing and slide tackles in `server/src/match/tackling.ts` with integration in `Player.ts` and `Match.ts`:
+
+- **Standing Tackle (`L`)**: short-range lunge (~1.5 m reach). If the opponent has the ball and is within range, the ball pops loose and possession changes. Mistimed attempts carry a ~20% foul chance. A ~0.5 s cooldown follows any tackle attempt.
+- **Slide Tackle (`U`)**: longer-range lunge (~3 m reach). The player slides along the ground for ~0.8 s, then enters a recovery period (~1 s) during which they cannot move or act. Higher foul chance (~40% on miss). On success the ball pops loose further; on miss the player is left out of position.
+- **Foul detection**: if a tackle fails (no ball contact), a random roll determines whether a foul occurred. On foul, a `game:event { type: 'foul' }` is emitted. Slide tackles foul more often than standing tackles.
+- **Rising edge**: tackle input is consumed on key-down only, so holding the key does not re-trigger.
+
+### Exported functions (pure)
+
+| Function | Description |
+|---|---|
+| `standingTackle(tacklerPos, opponentPos, opponentHasBall)` | Checks range, pops ball loose on success |
+| `slideTackle(tacklerPos, opponentPos, opponentHasBall)` | Longer range version of standing tackle |
+| `shouldFoul(tackleType)` | Random foul check based on tackle type probability |
+
+### Constants
+
+| Constant | Value |
+|---|---|
+| `TACKLE_STANDING_RANGE` | 1.5 m |
+| `TACKLE_SLIDE_RANGE` | 3.0 m |
+| `TACKLE_COOLDOWN` | 0.5 s |
+| `SLIDE_DURATION` | 0.8 s |
+| `SLIDE_RECOVERY` | 1.0 s |
+| `FOUL_CHANCE_STANDING` | 20% |
+| `FOUL_CHANCE_SLIDE` | 40% |
+
+### Test Coverage
+
+26 unit tests cover standing tackle range/success, slide tackle range/success, foul probability distribution (standing vs slide), tackle rising-edge detection, cooldown blocking, slide state machine (duration, recovery), and movement blocking during slide/recovery.
+
 ## Network Events
 
 | Event | Direction | Payload |
