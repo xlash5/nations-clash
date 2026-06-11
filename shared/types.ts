@@ -27,7 +27,18 @@ export interface GameState {
   ball: BallState
   score: { teamA: number; teamB: number }
   clock: number
-  phase: 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
+  phase: 'preMatch' | 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
+}
+
+export type GameStateSnapshot = GameState
+
+export interface GoalEventPayload {
+  scorer: string | null
+  team: 'home' | 'away'
+  isOwnGoal: boolean
+  replayData: {
+    snapshots: GameStateSnapshot[]
+  }
 }
 
 export interface MatchConfig {

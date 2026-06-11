@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Server } from 'socket.io'
 import { Match, type MatchPhase } from './Match.js'
-import type { MatchConfig } from '../../../shared/types.js'
+import type { GameState, MatchConfig, PlayerInput } from '../../../shared/types.js'
 import { TICK_S } from '../../../shared/types.js'
 
 function createMockIo(): Server {
@@ -18,6 +18,12 @@ function defaultConfig(overrides: Partial<MatchConfig> = {}): MatchConfig {
   }
 }
 
+function advanceThroughPreMatch(match: Match, io: Server): void {
+  while ((match as any).phase === 'preMatch') {
+    ;(match as any).tick()
+  }
+}
+
 describe('Match', () => {
   let io: Server
   let match: Match
@@ -27,11 +33,10 @@ describe('Match', () => {
     match = new Match(io, 'ROOM01', defaultConfig(), 'host-id', 'guest-id')
   })
 
-  it('constructor sets initial state', () => {
+  it('constructor sets initial state to preMatch', () => {
     const state = match.getState()
-    expect(state.clock).toBe(120)
+    expect(state.phase).toBe('preMatch')
     expect(state.score).toEqual({ teamA: 0, teamB: 0 })
-    expect(state.phase).toBe('firstHalf')
   })
 
   it('constructor creates 11 players per team', () => {
@@ -49,124 +54,480 @@ describe('Match', () => {
     expect(match.teamB.players[0].isGk).toBe(true)
   })
 
-  it('tick advances clock by 1/60 second in time mode', () => {
-    const initialClock = match.clock
-    ;(match as any).tick()
-    expect(match.clock).toBeCloseTo(initialClock - TICK_S, 5)
-  })
-
-  it('tick broadcasts game:state after each tick', () => {
-    ;(match as any).tick()
-    expect(io.to).toHaveBeenCalledWith('ROOM01')
-    expect(io.to('ROOM01').emit).toHaveBeenCalledWith('game:state', expect.any(Object))
-  })
-
-  it('getState returns correct snapshot shape', () => {
-    const state = match.getState()
-    expect(state).toHaveProperty('players')
-    expect(state).toHaveProperty('ball')
-    expect(state).toHaveProperty('score')
-    expect(state).toHaveProperty('clock')
-    expect(state).toHaveProperty('phase')
-    expect(Array.isArray(state.players)).toBe(true)
-    expect(state.players).toHaveLength(22)
-    expect(state.ball).toHaveProperty('position')
-    expect(state.ball).toHaveProperty('velocity')
-    expect(state.ball).toHaveProperty('spin')
-  })
-
-  it('getState returns player snapshots with required fields', () => {
-    const state = match.getState()
-    const player = state.players[0]
-    expect(player).toHaveProperty('id')
-    expect(player).toHaveProperty('team')
-    expect(player).toHaveProperty('position')
-    expect(player).toHaveProperty('velocity')
-    expect(player).toHaveProperty('rotation')
-    expect(player).toHaveProperty('stamina')
-    expect(player).toHaveProperty('isHumanControlled')
-    expect(player).toHaveProperty('isGk')
-  })
-
-  it('tick does NOT advance clock when phase is fulltime', () => {
-    match.phase = 'fulltime'
-    const clockBefore = match.clock
-    ;(match as any).tick()
-    expect(match.clock).toBe(clockBefore)
-  })
-
-  it('tick does NOT advance clock when phase is halftime', () => {
-    match.phase = 'halftime'
-    const clockBefore = match.clock
-    ;(match as any).tick()
-    expect(match.clock).toBe(clockBefore)
-  })
-
-  it('match ends when clock reaches 0 in time mode', () => {
-    match.clock = TICK_S
-    ;(match as any).tick()
-    expect(match.clock).toBe(0)
-    expect(match.phase).toBe('fulltime')
-  })
-
-  it('match ends when clock passes 0 in time mode', () => {
-    match.clock = TICK_S / 2
-    ;(match as any).tick()
-    expect(match.clock).toBe(0)
-    expect(match.phase).toBe('fulltime')
-  })
-
-  it('match ends when a team reaches goalsToWin in goals mode', () => {
-    const goalsConfig = defaultConfig({ mode: 'goals', goalsToWin: 3 })
-    const goalsMatch = new Match(io, 'ROOM01', goalsConfig, 'host-id', 'guest-id')
-    goalsMatch.score.teamA = 3
-    ;(goalsMatch as any).tick()
-    expect(goalsMatch.phase).toBe('fulltime')
-  })
-
-  it('match does NOT end before goalsToWin in goals mode', () => {
-    const goalsConfig = defaultConfig({ mode: 'goals', goalsToWin: 5 })
-    const goalsMatch = new Match(io, 'ROOM01', goalsConfig, 'host-id', 'guest-id')
-    goalsMatch.score.teamB = 3
-    ;(goalsMatch as any).tick()
-    expect(goalsMatch.phase).toBe('firstHalf')
-  })
-
-  it('start() begins the game loop', () => {
-    vi.useFakeTimers()
-    match.start()
-    expect(match.isRunning()).toBe(true)
-    match.stop()
-    vi.useRealTimers()
-  })
-
-  it('stop() halts the game loop', () => {
-    vi.useFakeTimers()
-    match.start()
-    match.stop()
-    expect(match.isRunning()).toBe(false)
-    vi.useRealTimers()
-  })
-
-  it('start() is idempotent', () => {
-    vi.useFakeTimers()
-    match.start()
-    match.start()
-    expect(match.isRunning()).toBe(true)
-    match.stop()
-    vi.useRealTimers()
-  })
-
-  it('handleInput stores input for processing', () => {
-    const input = { up: true, down: false, left: false, right: false, sprint: false, shoot: false, pass: false, tackle: false, slideTackle: false, switchPlayer: false }
-    match.handleInput('host-id', input)
-    ;(match as any).tick()
-    expect(io.to('ROOM01').emit).toHaveBeenCalled()
-  })
-
   it('ball starts at center', () => {
     expect(match.ball.position).toEqual({ x: 0, y: 0, z: 0 })
     expect(match.ball.velocity).toEqual({ x: 0, y: 0, z: 0 })
     expect(match.ball.spin).toEqual({ x: 0, y: 0, z: 0 })
+  })
+
+  describe('preMatch countdown', () => {
+    it('transitions to firstHalf after countdown reaches zero', () => {
+      advanceThroughPreMatch(match, io)
+      expect(match.getState().phase).toBe('firstHalf')
+    })
+
+    it('sets clock to duration when transitioning to firstHalf (time mode)', () => {
+      advanceThroughPreMatch(match, io)
+      expect(match.clock).toBe(120)
+    })
+
+    it('emits countdown events at 3, 2, 1', () => {
+      while ((match as any).phase === 'preMatch') {
+        ;(match as any).tick()
+      }
+      const allCalls = (io.to('ROOM01').emit as any).mock.calls
+      const countdownCalls = allCalls.filter(
+        (call: any[]) => call[0] === 'game:event' && call[1]?.type === 'countdown',
+      )
+      expect(countdownCalls.length).toBe(3)
+      expect(countdownCalls[0][1].value).toBe(3)
+      expect(countdownCalls[1][1].value).toBe(2)
+      expect(countdownCalls[2][1].value).toBe(1)
+    })
+
+    it('emits kickoff event when first half starts', () => {
+      advanceThroughPreMatch(match, io)
+      expect(io.to('ROOM01').emit).toHaveBeenCalledWith('game:event', {
+        type: 'kickoff',
+      })
+    })
+  })
+
+  describe('firstHalf', () => {
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+    })
+
+    it('tick advances clock by 1/60 second in time mode', () => {
+      const initialClock = match.clock
+      ;(match as any).tick()
+      expect(match.clock).toBeCloseTo(initialClock - TICK_S, 5)
+    })
+
+    it('tick broadcasts game:state after each tick', () => {
+      ;(match as any).tick()
+      expect(io.to).toHaveBeenCalledWith('ROOM01')
+      expect(io.to('ROOM01').emit).toHaveBeenCalledWith('game:state', expect.any(Object))
+    })
+
+    it('getState returns correct snapshot shape', () => {
+      const state = match.getState()
+      expect(state).toHaveProperty('players')
+      expect(state).toHaveProperty('ball')
+      expect(state).toHaveProperty('score')
+      expect(state).toHaveProperty('clock')
+      expect(state).toHaveProperty('phase')
+      expect(Array.isArray(state.players)).toBe(true)
+      expect(state.players).toHaveLength(22)
+      expect(state.ball).toHaveProperty('position')
+      expect(state.ball).toHaveProperty('velocity')
+      expect(state.ball).toHaveProperty('spin')
+    })
+
+    it('getState returns player snapshots with required fields', () => {
+      const state = match.getState()
+      const player = state.players[0]
+      expect(player).toHaveProperty('id')
+      expect(player).toHaveProperty('team')
+      expect(player).toHaveProperty('position')
+      expect(player).toHaveProperty('velocity')
+      expect(player).toHaveProperty('rotation')
+      expect(player).toHaveProperty('stamina')
+      expect(player).toHaveProperty('isHumanControlled')
+      expect(player).toHaveProperty('isGk')
+    })
+
+    it('handleInput stores input for processing', () => {
+      const input = { up: true, down: false, left: false, right: false, sprint: false, shoot: false, pass: false, tackle: false, slideTackle: false, switchPlayer: false }
+      match.handleInput('host-id', input)
+      ;(match as any).tick()
+      expect(io.to('ROOM01').emit).toHaveBeenCalled()
+    })
+
+    it('transitions to halftime when clock reaches 0', () => {
+      match.clock = TICK_S
+      ;(match as any).tick()
+      expect(match.phase).toBe('halftime')
+    })
+
+    it('emits halftime event on transition', () => {
+      match.clock = TICK_S
+      ;(match as any).tick()
+      expect(io.to('ROOM01').emit).toHaveBeenCalledWith('game:event', {
+        type: 'halftime',
+      })
+    })
+
+    it('transitions to fulltime if goalsToWin reached in goals mode', () => {
+      const goalsMatch = new Match(io, 'ROOM01', defaultConfig({ mode: 'goals', goalsToWin: 3 }), 'host-id', 'guest-id')
+      advanceThroughPreMatch(goalsMatch, io)
+      goalsMatch.score.teamA = 3
+      ;(goalsMatch as any).tick()
+      expect(goalsMatch.phase).toBe('fulltime')
+    })
+
+    it('does NOT end before goalsToWin in goals mode', () => {
+      const goalsMatch = new Match(io, 'ROOM01', defaultConfig({ mode: 'goals', goalsToWin: 5 }), 'host-id', 'guest-id')
+      advanceThroughPreMatch(goalsMatch, io)
+      goalsMatch.score.teamB = 3
+      ;(goalsMatch as any).tick()
+      expect(goalsMatch.phase).toBe('firstHalf')
+    })
+  })
+
+  describe('halftime', () => {
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+      match.clock = TICK_S
+      ;(match as any).tick()
+    })
+
+    it('pauses the game clock', () => {
+      const clockBefore = match.clock
+      ;(match as any).tick()
+      expect(match.clock).toBe(clockBefore)
+    })
+
+    it('transitions to secondHalf after 15 seconds', () => {
+      for (let i = 0; i < 15 * 60; i++) {
+        ;(match as any).tick()
+      }
+      expect(match.phase).toBe('secondHalf')
+    })
+
+    it('sets clock back to duration for second half', () => {
+      for (let i = 0; i < 15 * 60; i++) {
+        ;(match as any).tick()
+      }
+      expect(match.clock).toBe(120)
+    })
+  })
+
+  describe('secondHalf', () => {
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+      match.clock = TICK_S
+      ;(match as any).tick()
+      for (let i = 0; i < 15 * 60; i++) {
+        ;(match as any).tick()
+      }
+    })
+
+    it('transitions to fulltime when clock reaches 0', () => {
+      match.clock = TICK_S
+      ;(match as any).tick()
+      expect(match.phase).toBe('fulltime')
+    })
+
+    it('emits fulltime event on transition', () => {
+      match.clock = TICK_S
+      ;(match as any).tick()
+      expect(io.to('ROOM01').emit).toHaveBeenCalledWith('game:event', {
+        type: 'fulltime',
+      })
+    })
+  })
+
+  describe('fulltime', () => {
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+      match.clock = TICK_S
+      ;(match as any).tick()
+      for (let i = 0; i < 15 * 60; i++) {
+        ;(match as any).tick()
+      }
+      match.clock = TICK_S
+      ;(match as any).tick()
+    })
+
+    it('does not advance clock', () => {
+      const clockBefore = match.clock
+      ;(match as any).tick()
+      expect(match.clock).toBe(clockBefore)
+    })
+  })
+
+  describe('goal integration with state machine', () => {
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+    })
+
+    it('goal pause prevents gameplay then resets for kickoff', () => {
+      const goal = { team: 'home' as const, scorer: 'home-3', isOwnGoal: false, side: 'positive' as const }
+      ;(match as any).awardGoal(goal)
+      expect((match as any).goalPauseTimer).toBe(3.0)
+
+      for (let i = 0; i < 3 * 60; i++) {
+        ;(match as any).tick()
+      }
+      expect((match as any).goalPauseTimer).toBeLessThanOrEqual(TICK_S)
+    })
+
+    it('awardGoal sets goal pause timer', () => {
+      const goal = { team: 'home' as const, scorer: 'home-3', isOwnGoal: false, side: 'positive' as const }
+      ;(match as any).awardGoal(goal)
+      expect((match as any).goalPauseTimer).toBe(3.0)
+    })
+
+    it('scheduleKickoff is called after goal pause ends', () => {
+      const goal = { team: 'home' as const, scorer: 'home-3', isOwnGoal: false, side: 'positive' as const }
+      ;(match as any).awardGoal(goal)
+      for (let i = 0; i < 3 * 60; i++) {
+        ;(match as any).tick()
+      }
+      expect(match.ball.position).toEqual({ x: 0, y: 0, z: 0 })
+    })
+  })
+
+  describe('replay buffer', () => {
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+    })
+
+    it('pushSnapshot appends to buffer', () => {
+      const before = (match as any).getReplayData().snapshots.length
+      const state = match.getState()
+      ;(match as any).pushSnapshot(state)
+      const after = (match as any).getReplayData().snapshots.length
+      expect(after).toBe(before + 1)
+    })
+
+    it('buffer caps at 300 snapshots', () => {
+      ;(match as any).replayBuffer = []
+      const state = match.getState()
+      for (let i = 0; i < 310; i++) {
+        ;(match as any).pushSnapshot(state)
+      }
+      const data = (match as any).getReplayData()
+      expect(data.snapshots).toHaveLength(300)
+    })
+
+    it('oldest entries are evicted when buffer exceeds 300', () => {
+      ;(match as any).replayBuffer = []
+      for (let i = 0; i < 310; i++) {
+        const s = match.getState()
+        s.clock = i
+        ;(match as any).pushSnapshot(s)
+      }
+      const data = (match as any).getReplayData()
+      expect(data.snapshots[0].clock).toBe(10)
+      expect(data.snapshots[data.snapshots.length - 1].clock).toBe(309)
+    })
+
+    it('getReplayData returns copy of buffer', () => {
+      ;(match as any).replayBuffer = []
+      const state = match.getState()
+      ;(match as any).pushSnapshot(state)
+      const data1 = (match as any).getReplayData()
+      const data2 = (match as any).getReplayData()
+      expect(data1.snapshots).toHaveLength(1)
+      expect(data2.snapshots).toHaveLength(1)
+      data1.snapshots.push(state)
+      expect(data2.snapshots).toHaveLength(1)
+    })
+
+    it('tick pushes snapshot via broadcast', () => {
+      ;(match as any).tick()
+      const data = (match as any).getReplayData()
+      expect(data.snapshots.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('includes replayData in game:goal event', () => {
+      for (let i = 0; i < 100; i++) {
+        ;(match as any).tick()
+      }
+      const goal = { team: 'home' as const, scorer: 'home-3', isOwnGoal: false, side: 'positive' as const }
+      ;(match as any).awardGoal(goal)
+      const emitCalls = (io.to('ROOM01').emit as any).mock.calls
+      const goalCall = emitCalls.find((call: any[]) => call[0] === 'game:goal')
+      expect(goalCall).toBeDefined()
+      expect(goalCall[1].replayData.snapshots.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('start() / stop()', () => {
+    it('start() begins the game loop', () => {
+      vi.useFakeTimers()
+      match.start()
+      expect(match.isRunning()).toBe(true)
+      match.stop()
+      vi.useRealTimers()
+    })
+
+    it('stop() halts the game loop', () => {
+      vi.useFakeTimers()
+      match.start()
+      match.stop()
+      expect(match.isRunning()).toBe(false)
+      vi.useRealTimers()
+    })
+
+    it('start() is idempotent', () => {
+      vi.useFakeTimers()
+      match.start()
+      match.start()
+      expect(match.isRunning()).toBe(true)
+      match.stop()
+      vi.useRealTimers()
+    })
+  })
+
+  describe('player switching', () => {
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+    })
+
+    function moveAllOutfieldFar(team: typeof match.teamA): void {
+      for (let i = 1; i < team.players.length; i++) {
+        team.players[i].position = { x: 9999, y: 0, z: 9999 }
+      }
+    }
+
+    it('getNearestOutfieldPlayer returns nearest non-GK to the ball', () => {
+      const team = match.teamA
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      const nearest = (match as any).getNearestOutfieldPlayer(team)
+      expect(nearest).toBe(team.players[2])
+    })
+
+    it('getNearestOutfieldPlayer never returns the GK', () => {
+      const team = match.teamA
+      team.players[0].position = { x: 0, y: 0, z: 0 }
+      team.players[1].position = { x: 50, y: 0, z: 50 }
+      match.ball.position = { x: 0, y: 0, z: 0 }
+
+      const nearest = (match as any).getNearestOutfieldPlayer(team)
+      expect(nearest).not.toBe(team.players[0])
+      expect(nearest!.isGk).toBe(false)
+    })
+
+    it('getNearestOutfieldPlayer returns null when only GK remains', () => {
+      const team = match.teamA
+      team.players = team.players.filter((p: any) => p.isGk)
+
+      const nearest = (match as any).getNearestOutfieldPlayer(team)
+      expect(nearest).toBeNull()
+    })
+
+    it('switchPlayer changes humanControlledIndex to nearest outfield player', () => {
+      const team = match.teamA
+      expect(team.humanControlledIndex).toBe(1)
+
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      ;(match as any).switchPlayer(team)
+      expect(team.humanControlledIndex).toBe(2)
+    })
+
+    it('switchPlayer switches to second-nearest when current is already nearest', () => {
+      const team = match.teamA
+      expect(team.humanControlledIndex).toBe(1)
+
+      moveAllOutfieldFar(team)
+      team.players[1].position = { x: 5, y: 0, z: 5 }
+      team.players[2].position = { x: 10, y: 0, z: 10 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      ;(match as any).switchPlayer(team)
+      expect(team.humanControlledIndex).toBe(2)
+    })
+
+    it('switchPlayer never selects the goalkeeper', () => {
+      const team = match.teamA
+      moveAllOutfieldFar(team)
+      team.players[0].position = { x: 1, y: 0, z: 1 }
+      team.players[1].position = { x: 50, y: 0, z: 50 }
+      match.ball.position = { x: 0, y: 0, z: 0 }
+
+      ;(match as any).switchPlayer(team)
+      expect(team.humanControlledIndex).not.toBe(0)
+    })
+
+    it('switchPlayer toggles isHumanControlled flags correctly', () => {
+      const team = match.teamA
+      expect(team.players[1].isHumanControlled).toBe(true)
+
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      ;(match as any).switchPlayer(team)
+      expect(team.players[1].isHumanControlled).toBe(false)
+      expect(team.players[2].isHumanControlled).toBe(true)
+    })
+
+    it('switchPlayer does nothing when only GK is left (no outfield players)', () => {
+      const team = match.teamA
+      const humanIdx = team.humanControlledIndex
+
+      team.players = team.players.filter((p: any) => p.isGk)
+      team.players[0].isHumanControlled = true
+      team.humanControlledIndex = 0
+
+      ;(match as any).switchPlayer(team)
+      expect(team.humanControlledIndex).toBe(0)
+      expect(team.players[0].isHumanControlled).toBe(true)
+    })
+
+    it('applyPlayerInputs triggers switch on rising edge of switchPlayer input', () => {
+      const team = match.teamA
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      const input: PlayerInput = {
+        up: false, down: false, left: false, right: false,
+        sprint: false, shoot: false, pass: false,
+        tackle: false, slideTackle: false, switchPlayer: true,
+      }
+      match.handleInput('host-id', input)
+      ;(match as any).tick()
+
+      expect(team.humanControlledIndex).toBe(2)
+    })
+
+    it('holding switchPlayer key does not switch repeatedly (rising edge only)', () => {
+      const team = match.teamA
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      const input: PlayerInput = {
+        up: false, down: false, left: false, right: false,
+        sprint: false, shoot: false, pass: false,
+        tackle: false, slideTackle: false, switchPlayer: true,
+      }
+      match.handleInput('host-id', input)
+      ;(match as any).tick()
+      expect(team.humanControlledIndex).toBe(2)
+
+      ;(match as any).tick()
+      expect(team.humanControlledIndex).toBe(2)
+    })
+
+    it('getState reflects isHumanControlled after switch', () => {
+      const team = match.teamA
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      const input: PlayerInput = {
+        up: false, down: false, left: false, right: false,
+        sprint: false, shoot: false, pass: false,
+        tackle: false, slideTackle: false, switchPlayer: true,
+      }
+      match.handleInput('host-id', input)
+      ;(match as any).tick()
+
+      const state = match.getState()
+      const homeControlled = state.players.find((p) => p.team === 'home' && p.isHumanControlled)
+      expect(homeControlled).toBeDefined()
+      expect(homeControlled!.id).toBe('home-2')
+    })
   })
 })
