@@ -386,11 +386,30 @@ Server-side player movement logic in `server/src/match/Player.ts`:
 - **Input**: arrow keys (`up`, `down`, `left`, `right`) relative to the camera orientation, plus `sprint` (Shift)
 - **Camera-relative mapping**: `up` always pushes toward the opponent's goal regardless of which side the camera is on (handled via the `cameraSide` param: `-1` or `1`)
 - **Base speed**: 8 m/s; diagonal movement is normalised so speed is consistent
-- **Sprint**: 1.5× speed multiplier when stamina ≥ 10
+- **Sprint**: 1.5× speed multiplier when stamina ≥ 25; reduced to 1.2× when stamina is 10–25; disabled below 10
 - **Stamina drain**: 15 units/s while sprinting
-- **Stamina regen**: 5 units/s while not sprinting
+- **Stamina regen**: 5 units/s after 1s delay while not sprinting
 - **Ball control**: sprinting reduces control (1.5× drift multiplier) — ball offset from feet increases
 - **Rotation**: player `rotation` is derived from the movement direction via `atan2`
+
+## Stamina System
+
+Server-side stamina management in `server/src/match/Player.ts`:
+
+- **Stamina pool**: each player starts at 100, capped at 0–100
+- **Drain**: 15 units/s while sprinting
+- **Regen delay**: stamina does not regen for 1s after the last sprint tick
+- **Regen rate**: 5 units/s after the 1s delay has elapsed
+- **Speed tiers**:
+  - `≥ 25 stamina`: full sprint (1.5× base speed)
+  - `10–24 stamina`: reduced sprint (1.2× base speed)
+  - `< 10 stamina`: sprint disabled entirely
+- **Forced walk**: at 0 stamina the player must walk until some regen occurs
+- **Ball control**: sprinting at full stamina applies a 1.5× drift multiplier to the ball; sprinting with depleted stamina or not sprinting applies 1.0×
+
+### Test Coverage
+
+54 Player tests cover drain rates, regen delay, speed tiers (full, reduced, disabled), stamina caps (0/100), diagonal normalisation, sprint toggling, and integration with input/charge/tackle.
 
 ### Usage
 

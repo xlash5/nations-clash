@@ -6,7 +6,10 @@ const BASE_SPEED = 8
 const SPRINT_MULTIPLIER = 1.5
 const STAMINA_DRAIN_PER_SECOND = 15
 const STAMINA_REGEN_PER_SECOND = 5
+const STAMINA_REGEN_DELAY = 1.0
 const MIN_STAMINA_FOR_SPRINT = 10
+const LOW_STAMINA_THRESHOLD = 25
+const LOW_STAMINA_SPRINT_MULTIPLIER = 1.2
 const MAX_STAMINA = 100
 const CHARGE_RATE = 1.0
 
@@ -22,6 +25,7 @@ export class Player {
   velocity: Position
   rotation: number
   stamina: number
+  staminaRegenTimer: number
   isHumanControlled: boolean
   isGk: boolean
   isSprinting: boolean
@@ -53,6 +57,7 @@ export class Player {
     this.velocity = { x: 0, y: 0, z: 0 }
     this.rotation = 0
     this.stamina = MAX_STAMINA
+    this.staminaRegenTimer = 0
     this.isHumanControlled = false
     this.isGk = isGk
     this.aiState = 'HOLD'
@@ -77,7 +82,15 @@ export class Player {
   }
 
   applyInput(input: PlayerInput, cameraSide: -1 | 1, delta: number): void {
+    const wasSprinting = this.isSprinting
     this.isSprinting = input.sprint && this.stamina >= MIN_STAMINA_FOR_SPRINT
+
+    if (this.isSprinting && !wasSprinting) {
+      this.staminaRegenTimer = 0
+    }
+    if (this.isSprinting) {
+      this.staminaRegenTimer = 0
+    }
 
     this.updateStamina(delta)
     this.handleCharge(input, delta)
@@ -190,7 +203,10 @@ export class Player {
 
   getCurrentSpeed(): number {
     if (this.isSprinting && this.stamina >= MIN_STAMINA_FOR_SPRINT) {
-      return BASE_SPEED * SPRINT_MULTIPLIER
+      const multiplier = this.stamina >= LOW_STAMINA_THRESHOLD
+        ? SPRINT_MULTIPLIER
+        : LOW_STAMINA_SPRINT_MULTIPLIER
+      return BASE_SPEED * multiplier
     }
     return BASE_SPEED
   }
@@ -207,7 +223,12 @@ export class Player {
     if (this.isSprinting) {
       this.stamina = Math.max(0, this.stamina - STAMINA_DRAIN_PER_SECOND * delta)
     } else {
-      this.stamina = Math.min(MAX_STAMINA, this.stamina + STAMINA_REGEN_PER_SECOND * delta)
+      this.staminaRegenTimer += delta
+      if (this.staminaRegenTimer >= STAMINA_REGEN_DELAY) {
+        const regenTime = this.staminaRegenTimer - STAMINA_REGEN_DELAY
+        this.stamina = Math.min(MAX_STAMINA, this.stamina + STAMINA_REGEN_PER_SECOND * regenTime)
+        this.staminaRegenTimer = STAMINA_REGEN_DELAY
+      }
     }
   }
 
