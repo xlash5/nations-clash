@@ -726,7 +726,7 @@ describe('Match', () => {
 
         const goalPos = { x: 1, y: 0.2, z: 53.5 }
         match.ball.position = goalPos
-        match.lastTouch = { playerId: 'home-3', team: 'home' }
+        ;(match as any).lastTouch = { playerId: 'home-3', team: 'home' }
         ;(match as any).tick()
 
         expect(match.score.teamA).toBe(1)
@@ -778,7 +778,7 @@ describe('Match', () => {
         const goalPos = { x: 1, y: 0.2, z: 53.5 }
         match.ball.position = goalPos
 
-        const goal = (match as any).checkGoal?.(match.ball.position, match.lastTouch)
+        const goal = (match as any).checkGoal?.((match as any).ball.position, (match as any).lastTouch)
         const directCheck = typeof goal === 'undefined'
 
         const callCountBefore = (io.to('ROOM01').emit as any).mock.calls.length
