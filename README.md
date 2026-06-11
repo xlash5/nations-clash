@@ -138,6 +138,29 @@ Server-side ball physics engine in `server/src/match/physics.ts`:
 
 All physics functions are pure (input ball state → output new ball state) for testability. 34 unit tests cover gravity, air resistance, rolling friction, bounce, ground clamping, Magnus effect, kick impulse, and integrated tick behaviour.
 
+## Player Movement & Sprint
+
+Server-side player movement logic in `server/src/match/Player.ts`:
+
+- **Input**: arrow keys (`up`, `down`, `left`, `right`) relative to the camera orientation, plus `sprint` (Shift)
+- **Camera-relative mapping**: `up` always pushes toward the opponent's goal regardless of which side the camera is on (handled via the `cameraSide` param: `-1` or `1`)
+- **Base speed**: 8 m/s; diagonal movement is normalised so speed is consistent
+- **Sprint**: 1.5× speed multiplier when stamina ≥ 10
+- **Stamina drain**: 15 units/s while sprinting
+- **Stamina regen**: 5 units/s while not sprinting
+- **Ball control**: sprinting reduces control (1.5× drift multiplier) — ball offset from feet increases
+- **Rotation**: player `rotation` is derived from the movement direction via `atan2`
+
+### Usage
+
+```ts
+const player = new Player('p1', 'home')
+
+// Each tick: apply input, then step position
+player.applyInput(playerInput, cameraSide, delta)
+player.tick(delta)
+```
+
 ## Network Events
 
 | Event | Direction | Payload |

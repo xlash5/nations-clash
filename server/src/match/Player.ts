@@ -1,7 +1,14 @@
-import type { Position } from '../../../shared/types.js'
+import type { Position, PlayerInput } from '../../../shared/types.js'
+
+const BASE_SPEED = 8
+const SPRINT_MULTIPLIER = 1.5
+const STAMINA_DRAIN_PER_SECOND = 15
+const STAMINA_REGEN_PER_SECOND = 5
+const MIN_STAMINA_FOR_SPRINT = 10
+const MAX_STAMINA = 100
 
 export class Player {
-  id: string
+  readonly id: string
   team: 'home' | 'away'
   position: Position
   velocity: Position
@@ -9,15 +16,84 @@ export class Player {
   stamina: number
   isHumanControlled: boolean
   isGk: boolean
+  isSprinting: boolean
+  hasBall: boolean
 
-  constructor(id: string, team: 'home' | 'away', isGk: boolean = false) {
+  constructor(id: string, team: 'home' | 'away', isGk = false) {
     this.id = id
     this.team = team
     this.position = { x: 0, y: 0, z: 0 }
     this.velocity = { x: 0, y: 0, z: 0 }
     this.rotation = 0
-    this.stamina = 100
+    this.stamina = MAX_STAMINA
     this.isHumanControlled = false
     this.isGk = isGk
+    this.isSprinting = false
+    this.hasBall = false
+  }
+
+  applyInput(input: PlayerInput, cameraSide: -1 | 1, delta: number): void {
+    this.isSprinting = input.sprint && this.stamina >= MIN_STAMINA_FOR_SPRINT
+
+    this.updateStamina(delta)
+
+    if (!input.up && !input.down && !input.left && !input.right) {
+      this.velocity.x = 0
+      this.velocity.z = 0
+      return
+    }
+
+    const speed = this.getCurrentSpeed()
+    const dir = this.resolveDirection(input, cameraSide)
+
+    this.velocity.x = dir.x * speed
+    this.velocity.z = dir.z * speed
+    this.rotation = Math.atan2(dir.x, dir.z)
+  }
+
+  tick(delta: number): void {
+    this.position.x += this.velocity.x * delta
+    this.position.z += this.velocity.z * delta
+  }
+
+  getCurrentSpeed(): number {
+    if (this.isSprinting && this.stamina >= MIN_STAMINA_FOR_SPRINT) {
+      return BASE_SPEED * SPRINT_MULTIPLIER
+    }
+    return BASE_SPEED
+  }
+
+  canSprint(): boolean {
+    return this.stamina >= MIN_STAMINA_FOR_SPRINT
+  }
+
+  getBallControlMultiplier(): number {
+    return this.isSprinting && this.canSprint() ? 1.5 : 1.0
+  }
+
+  private updateStamina(delta: number): void {
+    if (this.isSprinting) {
+      this.stamina = Math.max(0, this.stamina - STAMINA_DRAIN_PER_SECOND * delta)
+    } else {
+      this.stamina = Math.min(MAX_STAMINA, this.stamina + STAMINA_REGEN_PER_SECOND * delta)
+    }
+  }
+
+  private resolveDirection(input: PlayerInput, cameraSide: -1 | 1): { x: number; z: number } {
+    let dx = 0
+    let dz = 0
+
+    if (input.up) dz += -cameraSide
+    if (input.down) dz += cameraSide
+    if (input.left) dx += cameraSide
+    if (input.right) dx += -cameraSide
+
+    const len = Math.sqrt(dx * dx + dz * dz)
+    if (len > 0) {
+      dx /= len
+      dz /= len
+    }
+
+    return { x: dx, z: dz }
   }
 }
