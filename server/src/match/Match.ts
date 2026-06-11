@@ -1,5 +1,5 @@
 import { Server } from 'socket.io'
-import type { MatchConfig, GameState, PlayerInput } from '../../../shared/types.js'
+import type { MatchConfig, GameState, PlayerInput, Position } from '../../../shared/types.js'
 import { TICK_MS, TICK_S } from '../../../shared/types.js'
 import { Team } from './Team.js'
 import { updatePhysics } from './physics.js'
@@ -16,7 +16,7 @@ export class Match {
   phase: MatchPhase
   teamA: Team
   teamB: Team
-  ball: { position: { x: number; y: number; z: number }; velocity: { x: number; y: number; z: number } }
+  ball: { position: Position; velocity: Position; spin: Position }
 
   private io: Server
   private roomCode: string
@@ -45,6 +45,7 @@ export class Match {
     this.ball = {
       position: { x: 0, y: 0, z: 0 },
       velocity: { x: 0, y: 0, z: 0 },
+      spin: { x: 0, y: 0, z: 0 },
     }
   }
 
@@ -116,6 +117,7 @@ export class Match {
       ball: {
         position: { ...this.ball.position },
         velocity: { ...this.ball.velocity },
+        spin: { ...this.ball.spin },
       },
       score: { ...this.score },
       clock: this.clock,
