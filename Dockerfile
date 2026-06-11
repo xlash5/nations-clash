@@ -31,9 +31,9 @@ ENV NODE_ENV=production
 ENV PORT=3000
 WORKDIR /app
 COPY --from=deps-prod /app/node_modules ./node_modules
-COPY --from=build-server /app/server/dist ./server/dist
+COPY --from=build-server /app/server/dist/server/src ./server/dist
 COPY --from=build-server /app/server/package.json ./server/package.json
-COPY --from=build-server /app/shared ./shared
+COPY --from=build-server /app/server/dist/shared ./shared
 COPY --from=build-client /app/client/dist ./server/public
 EXPOSE 3000
 CMD ["node", "server/dist/index.js"]
