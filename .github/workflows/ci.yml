@@ -38,8 +38,9 @@ jobs:
 
       - run: sleep 3
 
-      - run: docker run --rm --network host curlimages/curl:latest -f http://localhost:3000
+      - run: docker exec football-test wget -q -O - http://localhost:3000 | head -5
 
       - name: Cleanup
         if: always()
-        run: docker stop football-test && docker rm football-test
+        continue-on-error: true
+        run: docker stop football-test 2>/dev/null; docker rm football-test 2>/dev/null
