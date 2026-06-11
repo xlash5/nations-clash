@@ -1,3 +1,4 @@
+import { audio } from '../game/Audio'
 import type { TeamData } from '../../../shared/types.js'
 
 export interface TeamSelectCallbacks {
@@ -81,6 +82,7 @@ export class TeamSelect {
     })
     card.addEventListener('click', () => {
       if (this.locked || this.selectedId === team.id) return
+      audio.play('menu-click')
       this.selectedId = team.id
       this.updateCardStyles()
       this.onSelectTeam(team.id)

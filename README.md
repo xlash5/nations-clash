@@ -212,6 +212,50 @@ The heads-up display in `client/src/game/HUD.ts` renders as an HTML/CSS overlay 
 
 All HUD elements are mounted as children of `#hud-container` (an absolute overlay spanning the game container). 24 unit tests cover all elements.
 
+## Sound Effects
+
+Basic sound effects are managed by `client/src/game/Audio.ts`:
+
+- **Preload**: all 6 sound files are loaded as `Audio` elements on startup
+- **Volume**: read from the settings system (`localStorage` via `getSettings()`); updates take effect on the next play
+- **Pitch variation**: the `play(name, pitch)` method sets `playbackRate` clamped to `[0.5, 2]` — used for the kick sound to vary pitch by charge power
+
+### Sound Triggers
+
+| Sound | File | Trigger |
+|---|---|---|
+| Kick | `kick.wav` | Shoot or pass release (pitch scaled by charge power) |
+| Goal | `goal.wav` | `game:goal` event |
+| Whistle (short) | `whistle-short.wav` | Kickoff, foul |
+| Whistle (long) | `whistle-long.wav` | Halftime, full-time |
+| Menu click | `menu-click.wav` | All UI button clicks (Create/Join Room, How to Play, Settings, Back, Ready, team select, rematch, leave) |
+| Countdown beep | `countdown-beep.wav` | `game:event { type: 'countdown' }` |
+
+### Audio Manager API
+
+```ts
+import { audio, AudioManager } from './game/Audio'
+
+// Preload all sounds
+audio.preload()
+
+// Play a sound
+audio.play('kick', 0.8)      // pitch = 0.8
+audio.play('goal')            // default pitch
+
+// Volume control (0–1)
+audio.setVolume(0.5)
+const vol = audio.getVolume() // 0.5
+```
+
+### Audio Files
+
+Six `.wav` files reside in `client/public/audio/` — procedurally generated sine-wave tones (no external assets required, no attribution needed). To replace with production-quality sounds, drop `.ogg` or `.mp3` files with the same base names into that directory and update the `SOUND_FILES` map in `Audio.ts`.
+
+### Test Coverage
+
+12 unit tests in `client/src/game/Audio.test.ts` cover preload count, play invocation, pitch clamping, volume persistence, error handling, and the singleton export.
+
 ## Charge-Based Kick System (Shoot & Pass)
 
 Server-side charge kicking in `server/src/match/Player.ts` with execution in `Match.ts`:
