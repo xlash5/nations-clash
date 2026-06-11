@@ -22,9 +22,10 @@ football/
 │   │   │   ├── MainMenu.ts   # Create/Join room screen
 │   │   │   └── Lobby.ts      # Player list + ready button
 │   │   └── game/
-│   │       ├── Pitch.ts  # 3D pitch, goals, stadium shell, lighting
-│   │       ├── PlayerMesh.ts # Low-poly humanoid player model
-│   │       └── BallMesh.ts   # Icosahedron soccer ball
+│   │       ├── Pitch.ts           # 3D pitch, goals, stadium shell, lighting
+│   │       ├── PlayerMesh.ts      # Low-poly humanoid player model
+│   │       ├── BallMesh.ts        # Icosahedron soccer ball
+│   │       └── CameraController.ts # Tele-broadcast camera with lerp + flip
 │   ├── public/audio/ # SFX files (placeholder)
 │   ├── index.html
 │   └── package.json
@@ -82,6 +83,28 @@ Procedural soccer ball in `client/src/game/BallMesh.ts`:
 - **Scale**: ~0.22 m radius (regulation size 5)
 - **Flat shading** with vertex colouring
 - Exported as `createBallMesh(): THREE.Mesh`
+
+## Camera System
+
+Tele-broadcast style camera in `client/src/game/CameraController.ts`:
+
+- **Position**: elevated (~40 units) behind one team's goal line, angled down at the pitch
+- **Follow**: smoothly interpolates (`lerp`) its x position toward the ball's x position for a broadcast feel
+- **Flip**: `flipSide()` rotates the camera 180° around the pitch centre at halftime
+- **FOV**: 60° for a typical broadcast field of view
+- **Orientation**: constrained — maintains a fixed birds-eye-ish angle from behind the attacking/defending team
+
+### Usage
+
+```ts
+const cam = new CameraController(aspect)
+
+// Each frame — pass the ball position and delta time
+cam.update(ballPosition, delta)
+
+// At halftime
+cam.flipSide()
+```
 
 ## Network Events
 
