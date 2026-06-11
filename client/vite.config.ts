@@ -9,10 +9,10 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       output: {
-        manualChunks: {
-          three: ['three'],
-          game: ['./src/game/'],
-          ui: ['./src/ui/'],
+        manualChunks(id) {
+          if (id.includes('node_modules/three')) return 'three'
+          if (id.includes('/src/game/')) return 'game'
+          if (id.includes('/src/ui/')) return 'ui'
         },
       },
     },
