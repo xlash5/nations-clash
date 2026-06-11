@@ -117,6 +117,26 @@ describe('Player', () => {
       )
       expect(speed).toBeCloseTo(8, 5)
     })
+
+    it('stamina between 10 and 25 reduces sprint to 1.2x base speed', () => {
+      const player = new Player('p1', 'home')
+      player.stamina = 20
+      player.applyInput(input({ up: true, sprint: true }), -1, 1 / 60)
+      const speed = Math.sqrt(
+        player.velocity.x ** 2 + player.velocity.z ** 2,
+      )
+      expect(speed).toBeCloseTo(9.6, 5)
+    })
+
+    it('stamina above 25 gives full 1.5x sprint speed', () => {
+      const player = new Player('p1', 'home')
+      player.stamina = 26
+      player.applyInput(input({ up: true, sprint: true }), -1, 1 / 60)
+      const speed = Math.sqrt(
+        player.velocity.x ** 2 + player.velocity.z ** 2,
+      )
+      expect(speed).toBeCloseTo(12, 5)
+    })
   })
 
   describe('stamina', () => {
@@ -132,24 +152,47 @@ describe('Player', () => {
       expect(player.stamina).toBeCloseTo(92.5, 0)
     })
 
-    it('not sprinting for 1 second regenerates ~5 stamina', () => {
+    it('not sprinting for 2 seconds regenerates ~5 stamina (1s delay + 1s regen)', () => {
       const player = new Player('p1', 'home')
       player.stamina = 50
-      player.applyInput(input({ up: true }), -1, 1.0)
+      player.applyInput(input({ up: true }), -1, 2.0)
       expect(player.stamina).toBeCloseTo(55, 0)
-    })
-
-    it('stamina does not exceed maximum of 100', () => {
-      const player = new Player('p1', 'home')
-      player.stamina = 99
-      player.applyInput(input(), -1, 1.0)
-      expect(player.stamina).toBeLessThanOrEqual(100)
     })
 
     it('stamina does not go below 0', () => {
       const player = new Player('p1', 'home')
       player.applyInput(input({ up: true, sprint: true }), -1, 10.0)
       expect(player.stamina).toBe(0)
+    })
+
+    it('stamina does not regen immediately after sprinting (1s delay)', () => {
+      const player = new Player('p1', 'home')
+      player.stamina = 50
+      player.applyInput(input({ up: true, sprint: true }), -1, 0.5)
+      player.applyInput(input({ up: true }), -1, 0.5)
+      expect(player.stamina).toBeCloseTo(42.5, 0)
+    })
+
+    it('stamina regens after 1s delay from last sprint', () => {
+      const player = new Player('p1', 'home')
+      player.stamina = 50
+      player.applyInput(input({ up: true, sprint: true }), -1, 0.5)
+      player.applyInput(input({ up: true }), -1, 2.0)
+      expect(player.stamina).toBeCloseTo(47.5, 0)
+    })
+
+    it('stamina regen recovers ~25 units over 5s from 70', () => {
+      const player = new Player('p1', 'home')
+      player.stamina = 70
+      player.applyInput(input(), -1, 6.0)
+      expect(player.stamina).toBeCloseTo(95, 0)
+    })
+
+    it('stamina does not exceed 100', () => {
+      const player = new Player('p1', 'home')
+      player.stamina = 99
+      player.applyInput(input(), -1, 5.0)
+      expect(player.stamina).toBe(100)
     })
   })
 
