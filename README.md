@@ -231,7 +231,9 @@ The heads-up display in `client/src/game/HUD.ts` renders as an HTML/CSS overlay 
 - **Ping indicator** (`#hud-ping`): top-right corner, e.g. `42ms`. Colour-coded green (<50ms), yellow (50–100ms), red (>100ms). Updated via `setPing(ms)`. Latency data from `SocketClient.getLatency()` (tracked via Socket.io's `pong` event).
 - **Mini-map** (`#hud-minimap`): bottom-left corner, a `150×100` Canvas 2D pitch showing all 22 players as coloured dots (home red, away blue, GK yellow, human player outlined in white). Toggle visibility with the `M` key. Updated via `updateMiniMap(players)`.
 
-All HUD elements are mounted as children of `#hud-container` (an absolute overlay spanning the game container). 24 unit tests cover all elements.
+- **Disconnect notification** (`#hud-disconnect`): centred overlay, red text, shows "Opponent disconnected — Xs" countdown during disconnect timeout. Shown via `showDisconnectNotification()`, hidden via `hideDisconnectNotification()`. Countdown managed by `startDisconnectCountdown(timeoutMs)` which updates every 200ms.
+
+All HUD elements are mounted as children of `#hud-container` (an absolute overlay spanning the game container). 27 unit tests cover all elements.
 
 ## Sound Effects
 
@@ -579,14 +581,51 @@ The post-match results screen in `client/src/ui/PostMatch.ts` is shown after ful
 - `matchSessions: Map<string, MatchSession>` stores the original team/config for reuse
 - On `match:leave` or `disconnect`: match is stopped, player removed from room, opponent notified
 
+## Disconnect Handling
+
+Players can disconnect mid-match (closed tab, network drop, crash). The server handles this gracefully:
+
+### Mid-Match Disconnect
+
+1. Opponent disconnects → match simulation **pauses immediately**
+2. A **15-second timeout** starts
+3. Remaining player sees **"Opponent disconnected — Xs"** countdown overlay
+4. If the player reconnects within 15s → timer cancelled, match resumes
+5. If timer expires → `game:event { type: 'fulltime', winner }` emitted, opponent declared winner
+
+### Lobby/Pre-Match Disconnect
+
+- Player is removed from the room
+- Remaining player is notified via `player:left`
+- Empty rooms are cleaned up immediately
+
+### Reconnection
+
+- Room code is stored in `localStorage` under the `nations-clash-room` key
+- On socket reconnect, `room:reconnect { roomCode }` is sent automatically
+- Server re-associates the new socket ID with the existing player session
+- Match state (timers, inputs) is transferred to the new socket ID
+
+### Client Events
+
+| Event | Direction | Payload |
+|---|---|---|
+| `game:event { type: 'player_disconnected' }` | S→C | `{ playerId, timeoutMs }` |
+| `game:event { type: 'player_reconnected' }` | S→C | `{ playerId }` |
+
+### Test Coverage
+
+18 disconnect handling tests cover: disconnect marking, match pause, timer countdown, reconnect cancellation, timeout → fulltime with winner, lobby disconnect, session transfer via `updatePlayerId`, and reconnection before expiry preventing abandonment.
+
 ## Network Events
 
 | Event | Direction | Payload |
-|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|
 | `room:create` | C→S | — |
 | `room:created` | S→C | `{ roomCode }` |
 | `room:join` | C→S | `{ roomCode }` |
 | `room:joined` | S→C | `{ code, players }` |
+| `room:reconnect` | C→S | `{ roomCode }` |
 | `room:error` | S→C | `{ message }` |
 | `player:ready` | C→S | — |
 | `player:left` | S→C | `{ playerId }` |
@@ -598,7 +637,7 @@ The post-match results screen in `client/src/ui/PostMatch.ts` is shown after ful
 | `game:input` | C→S | `{ keys: bitmask, chargeType, chargeTimestamp }` |
 | `game:state` | S→C | `{ players[], ball, score, clock, phase }` |
 | `game:goal` | S→C | `{ scorer, team, isOwnGoal, replayData }` |
-| `game:event` | S→C | `{ type: 'foul', position, foulingTeam, fouledTeam }` or `{ type: 'kickoff'|'halftime'|'fulltime'|'countdown', ... }` |
+| `game:event` | S→C | `{ type: 'foul'|'kickoff'|'halftime'|'fulltime'|'countdown'|'player_disconnected'|'player_reconnected', ... }` |
 | `match:rematchRequest` | C→S | — |
 | `match:rematchStatus` | S→C | `{ playerIds: string[] }` |
 | `match:rematchAccepted` | S→C | — |

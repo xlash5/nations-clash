@@ -83,3 +83,5 @@ export interface TeamData {
 
 export const TICK_MS = 1000 / 60
 export const TICK_S = TICK_MS / 1000
+
+export const DISCONNECT_TIMEOUT = 15

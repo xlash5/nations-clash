@@ -1,6 +1,6 @@
 import { createServer } from 'http'
 import { Server } from 'socket.io'
-import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, serializeRoom, areBothReady, selectTeam, areBothTeamsSelected, assignHomeAway, getTeamSelection } from './rooms.js'
+import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, serializeRoom, areBothReady, selectTeam, areBothTeamsSelected, assignHomeAway, getTeamSelection, setPlayerSession, markPlayerDisconnected, updatePlayerId } from './rooms.js'
 import { Match } from './match/Match.js'
 import { TEAMS } from './data/teams.js'
 import type { MatchConfig, TeamData } from '../../shared/types.js'
@@ -32,6 +32,7 @@ io.on('connection', (socket) => {
     const code = createRoom()
     joinRoom(code, socket.id)
     currentRoomCode = code
+    setPlayerSession(socket.id, code)
     socket.join(code)
     socket.emit('room:created', { roomCode: code })
   })
@@ -40,12 +41,44 @@ io.on('connection', (socket) => {
     try {
       const room = joinRoom(roomCode, socket.id)
       currentRoomCode = roomCode
+      setPlayerSession(socket.id, roomCode)
       socket.join(roomCode)
       socket.emit('room:joined', serializeRoom(room))
       socket.to(roomCode).emit('room:joined', serializeRoom(room))
     } catch (err) {
       socket.emit('room:error', { message: (err as Error).message })
     }
+  })
+
+  socket.on('room:reconnect', ({ roomCode }: { roomCode: string }) => {
+    const room = getRoom(roomCode)
+    if (!room) {
+      socket.emit('room:error', { message: 'Room not found' })
+      return
+    }
+
+    const playerIds = Array.from(room.players.keys())
+    const disconnectedPlayerId = playerIds.find((pid) => room.players.get(pid)?.disconnected)
+
+    if (!disconnectedPlayerId) {
+      socket.emit('room:error', { message: 'No disconnected player in this room' })
+      return
+    }
+
+    const oldId = disconnectedPlayerId
+    updatePlayerId(roomCode, oldId, socket.id)
+    setPlayerSession(socket.id, roomCode)
+    socket.join(roomCode)
+    currentRoomCode = roomCode
+
+    const match = activeMatches.get(roomCode)
+    if (match) {
+      match.updatePlayerId(oldId, socket.id)
+      match.onPlayerReconnect(socket.id)
+    }
+
+    socket.emit('room:joined', serializeRoom(room))
+    socket.to(roomCode).emit('room:joined', serializeRoom(room))
   })
 
   socket.on('player:ready', () => {
@@ -170,8 +203,14 @@ io.on('connection', (socket) => {
   })
 
   socket.on('disconnect', () => {
-    if (currentRoomCode) {
-      const match = activeMatches.get(currentRoomCode)
+    if (!currentRoomCode) return
+
+    const match = activeMatches.get(currentRoomCode)
+
+    if (match && match.phase !== 'fulltime') {
+      match.onPlayerDisconnect(socket.id)
+      markPlayerDisconnected(currentRoomCode, socket.id)
+    } else {
       if (match) {
         match.stop()
         activeMatches.delete(currentRoomCode)

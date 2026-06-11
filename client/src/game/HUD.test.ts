@@ -214,6 +214,7 @@ describe('HUD', () => {
     expect(parent.querySelector('#hud-stamina')).not.toBeNull()
     expect(parent.querySelector('#hud-ping')).not.toBeNull()
     expect(parent.querySelector('#hud-minimap')).not.toBeNull()
+    expect(parent.querySelector('#hud-disconnect')).not.toBeNull()
   })
 
   it('unmount removes all HUD elements', () => {
@@ -224,5 +225,26 @@ describe('HUD', () => {
     expect(parent.querySelector('#hud-active-player')).toBeNull()
     expect(parent.querySelector('#hud-ping')).toBeNull()
     expect(parent.querySelector('#hud-minimap')).toBeNull()
+    expect(parent.querySelector('#hud-disconnect')).toBeNull()
+  })
+
+  it('showDisconnectNotification displays overlay', () => {
+    hud.showDisconnectNotification()
+    const overlay = parent.querySelector('#hud-disconnect') as HTMLDivElement
+    expect(overlay.style.display).toBe('block')
+  })
+
+  it('hideDisconnectNotification hides overlay', () => {
+    hud.showDisconnectNotification()
+    hud.hideDisconnectNotification()
+    const overlay = parent.querySelector('#hud-disconnect') as HTMLDivElement
+    expect(overlay.style.display).toBe('none')
+  })
+
+  it('showDisconnectCountdown displays countdown text', () => {
+    hud.showDisconnectCountdown(10)
+    const overlay = parent.querySelector('#hud-disconnect') as HTMLDivElement
+    expect(overlay.style.display).toBe('block')
+    expect(overlay.textContent).toContain('10')
   })
 })

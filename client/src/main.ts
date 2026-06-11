@@ -36,6 +36,7 @@ let chargeType: string | null = null
 
 let currentPlayerId: string | null = null
 let opponentPlayerId: string | null = null
+let currentRoomCode: string | null = null
 
 function storePlayerIds(payload: MatchStartPayload): void {
   const selfId = client.getSocketId()
@@ -66,6 +67,13 @@ function storePlayerIds(payload: MatchStartPayload): void {
     onGameEvent: () => {},
     onRematchStatus: () => {},
     onRematchAccepted: () => {},
+  })
+
+  client.setOnConnect(() => {
+    const savedRoom = localStorage.getItem('nations-clash-room')
+    if (savedRoom) {
+      client.reconnectToRoom(savedRoom)
+    }
   })
 
 audio.preload()
@@ -344,6 +352,13 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
       if (payload.type === 'countdown') {
         audio.play('countdown-beep')
       }
+      if (payload.type === 'player_disconnected') {
+        hud.showDisconnectNotification()
+        hud.startDisconnectCountdown(payload.timeoutMs as number)
+      }
+      if (payload.type === 'player_reconnected') {
+        hud.hideDisconnectNotification()
+      }
     },
     onRematchStatus: () => {},
     onRematchAccepted: () => {},
@@ -371,6 +386,7 @@ function showPostMatch(payload: FulltimePayload, oldContainer: HTMLElement): voi
       onRematch: () => client.requestRematch(),
       onLeave: () => {
         client.leaveMatch()
+        localStorage.removeItem('nations-clash-room')
         showMenu()
       },
     },
@@ -414,6 +430,9 @@ function showMenu(): void {
     currentScreen.unmount()
     currentScreen = null
   }
+
+  currentRoomCode = null
+  localStorage.removeItem('nations-clash-room')
 
   const menu = new MainMenu({
     onCreateRoom: () => {
@@ -496,6 +515,9 @@ function showLobby(roomCode: string, players: { id: string; ready: boolean }[] =
   if (currentScreen) {
     currentScreen.unmount()
   }
+
+  currentRoomCode = roomCode
+  localStorage.setItem('nations-clash-room', roomCode)
 
   const lobby = new Lobby({
     onToggleReady: () => client.toggleReady(),

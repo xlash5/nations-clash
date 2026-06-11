@@ -56,6 +56,7 @@ export interface FulltimePayload {
   goals: { playerId: string | null; team: 'home' | 'away'; time: number; isOwnGoal: boolean }[]
   homeTeamName: string
   awayTeamName: string
+  winner?: 'home' | 'away'
 }
 
 export interface SocketClientCallbacks {
@@ -79,9 +80,19 @@ export class SocketClient {
   private callbacks: SocketClientCallbacks
   private _latency: number = 0
 
+  private _onConnect: (() => void) | null = null
+
+  setOnConnect(cb: () => void): void {
+    this._onConnect = cb
+  }
+
   constructor(serverUrl: string, callbacks: SocketClientCallbacks) {
     this.callbacks = callbacks
     this.socket = io(serverUrl)
+
+    this.socket.on('connect', () => {
+      this._onConnect?.()
+    })
 
     this.socket.on('room:created', (payload) => this.callbacks.onRoomCreated(payload))
     this.socket.on('room:joined', (payload) => this.callbacks.onRoomJoined(payload))
@@ -112,6 +123,10 @@ export class SocketClient {
 
   setCallbacks(callbacks: SocketClientCallbacks): void {
     this.callbacks = callbacks
+  }
+
+  reconnectToRoom(roomCode: string): void {
+    this.socket.emit('room:reconnect', { roomCode })
   }
 
   createRoom(): void {

@@ -4,6 +4,7 @@ const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 export interface PlayerInfo {
   id: string
   ready: boolean
+  disconnected: boolean
 }
 
 export interface TeamSelection {
@@ -55,7 +56,7 @@ export function joinRoom(code: string, playerId: string): Room {
   if (room.players.size >= 2) {
     throw new Error('Room is full')
   }
-  room.players.set(playerId, { id: playerId, ready: false })
+  room.players.set(playerId, { id: playerId, ready: false, disconnected: false })
   return room
 }
 
@@ -145,4 +146,51 @@ export function assignHomeAway(code: string): [HomeAwayAssignment, HomeAwayAssig
 export function hasTeamPhaseStarted(code: string): boolean {
   const room = rooms.get(code)
   return room?.teamSelections.size === 2
+}
+
+const playerSessions = new Map<string, string>()
+
+export function setPlayerSession(playerId: string, roomCode: string): void {
+  playerSessions.set(playerId, roomCode)
+}
+
+export function getPlayerRoom(playerId: string): string | undefined {
+  return playerSessions.get(playerId)
+}
+
+export function clearPlayerSession(playerId: string): void {
+  playerSessions.delete(playerId)
+}
+
+export function markPlayerDisconnected(code: string, playerId: string): Room {
+  const room = rooms.get(code)
+  if (!room) throw new Error('Room not found')
+  const player = room.players.get(playerId)
+  if (!player) throw new Error('Player not in room')
+  player.disconnected = true
+  return room
+}
+
+export function updatePlayerId(code: string, oldId: string, newId: string): Room {
+  const room = rooms.get(code)
+  if (!room) throw new Error('Room not found')
+
+  const player = room.players.get(oldId)
+  if (!player) throw new Error('Player not found')
+
+  player.id = newId
+  room.players.delete(oldId)
+  room.players.set(newId, player)
+
+  const selection = room.teamSelections.get(oldId)
+  if (selection) {
+    room.teamSelections.delete(oldId)
+    room.teamSelections.set(newId, selection)
+  }
+
+  return room
+}
+
+export function __resetSessionsForTest(): void {
+  playerSessions.clear()
 }
