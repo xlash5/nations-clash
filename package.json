@@ -1,0 +1,17 @@
+{
+  "name": "nations-clash",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["server", "client"],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p client/tsconfig.json",
+    "lint": "echo 'No linter configured yet'"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}
