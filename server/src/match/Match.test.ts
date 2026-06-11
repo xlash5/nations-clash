@@ -72,6 +72,7 @@ describe('Match', () => {
     expect(state.players).toHaveLength(22)
     expect(state.ball).toHaveProperty('position')
     expect(state.ball).toHaveProperty('velocity')
+    expect(state.ball).toHaveProperty('spin')
   })
 
   it('getState returns player snapshots with required fields', () => {
@@ -166,5 +167,6 @@ describe('Match', () => {
   it('ball starts at center', () => {
     expect(match.ball.position).toEqual({ x: 0, y: 0, z: 0 })
     expect(match.ball.velocity).toEqual({ x: 0, y: 0, z: 0 })
+    expect(match.ball.spin).toEqual({ x: 0, y: 0, z: 0 })
   })
 })

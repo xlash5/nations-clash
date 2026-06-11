@@ -16,7 +16,7 @@ football/
 │   │       ├── Match.ts     # 60 Hz authoritative game loop
 │   │       ├── Player.ts    # Player state (position, velocity, stamina)
 │   │       ├── Team.ts      # Team data structure (11 players, score)
-│   │       ├── physics.ts   # Ball physics (stub)
+│   │       ├── physics.ts   # Ball physics engine
 │   │       ├── ai.ts        # AI behaviour (stub)
 │   │       ├── collision.ts # Collision detection (stub)
 │   │       └── goalDetection.ts # Goal detection (stub)
@@ -114,6 +114,30 @@ cam.update(ballPosition, delta)
 cam.flipSide()
 ```
 
+## Ball Physics
+
+Server-side ball physics engine in `server/src/match/physics.ts`:
+
+- **Gravity**: `-9.81 m/s²` applied to Y velocity each tick
+- **Air resistance**: linear drag (`0.05/s`) on all velocity axes when ball is airborne
+- **Rolling friction**: horizontal deceleration (`5.0 m/s²`) when ball is on the ground
+- **Bounce**: reflects Y velocity with `0.5` restitution coefficient when ball lands
+- **Ground clamp**: ball Y position never drops below `BALL_RADIUS` (0.22 units)
+- **Spin (Magnus effect)**: cross product of spin and velocity produces lateral acceleration (`0.003` factor), curving the trajectory
+- **Kick**: applies velocity impulse in a given direction scaled by power, with automatic side-spin
+
+### Exported functions
+
+| Function | Description |
+|---|---|
+| `tickPhysics(ball, dt)` | Full per-tick physics update (gravity, drag/friction, spin, position, bounce) |
+| `updatePhysics(match, state)` | Impure wrapper called from Match tick loop |
+| `applyGravity`, `applyAirResistance`, `applyRollingFriction`, `applySpin` | Pure force functions |
+| `bounce`, `clampToGround`, `isOnGround`, `updatePosition` | Pure utility functions |
+| `kick(ball, direction, power)` | Applies kick impulse + spin |
+
+All physics functions are pure (input ball state → output new ball state) for testability. 34 unit tests cover gravity, air resistance, rolling friction, bounce, ground clamping, Magnus effect, kick impulse, and integrated tick behaviour.
+
 ## Network Events
 
 | Event | Direction | Payload |
@@ -144,7 +168,7 @@ The authoritative game simulation runs at **60 ticks/sec** in `server/src/match/
 ```ts
 {
   players: { id, team, position, velocity, rotation, stamina, isHumanControlled, isGk }[]
-  ball:    { position, velocity }
+  ball:    { position, velocity, spin }
   score:   { teamA: number, teamB: number }
   clock:   number
   phase:   'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'

@@ -18,6 +18,7 @@ export interface PlayerState {
 export interface BallState {
   position: Position
   velocity: Position
+  spin: Position
 }
 
 export interface GameState {
