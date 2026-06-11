@@ -146,6 +146,27 @@ cam.update(ballPosition, delta)
 cam.flipSide()
 ```
 
+### Goal Replay Camera
+
+A dedicated camera angle activates during slow-motion goal replays (`client/src/game/CameraController.ts:85`):
+
+- **Position**: elevated behind the goal that was scored on, looking toward the scorer
+- **Height**: 50 units (vs. 40 for the broadcast camera) for a higher vantage point
+- **Transition**: smooth lerp over ~0.5s into replay position and back to normal on end/skip
+- **Follow**: the replay camera tracks the ball's x position during playback
+- **Trigger**: `activateReplayMode(team, ballPosition)` on goal event; `deactivateReplayMode()` on replay end
+- **Test coverage**: 7 unit tests covering positioning for both teams, elevation, lerp transitions, ball tracking, frustum containment, and return to normal
+
+### Usage
+
+```ts
+// On goal event
+cam.activateReplayMode('home', ballPosition)
+
+// When replay ends or is skipped
+cam.deactivateReplayMode()
+```
+
 ## Input System
 
 Client-side keyboard input capture and bitmask packing in `client/src/game/Input.ts`:

@@ -1,3 +1,4 @@
+import * as THREE from 'three'
 import { SocketClient, type RoomJoinedPayload, type MatchStartPayload, type TeamSelectPayload, type TeamSelectedPayload, type BothTeamsSelectedPayload, type RematchStatusPayload, type FulltimePayload } from './network/SocketClient'
 import { audio } from './game/Audio'
 import { MainMenu } from './ui/MainMenu'
@@ -9,6 +10,9 @@ import { PostMatch } from './ui/PostMatch'
 import type { GoalInfo } from './ui/PostMatch'
 import { HUD } from './game/HUD'
 import { ReplayController } from './game/ReplayController'
+import { CameraController } from './game/CameraController'
+import { createPitch } from './game/Pitch'
+import { createBallMesh } from './game/BallMesh'
 import { Input, KEY_SHOOT, KEY_PASS } from './game/Input'
 import type { GameState, GoalEventPayload } from '../../shared/types.js'
 
@@ -19,6 +23,12 @@ appRoot.id = 'app-root'
 document.body.appendChild(appRoot)
 
 let currentScreen: { unmount: () => void } | null = null
+
+let cameraController: CameraController | null = null
+let scene: THREE.Scene | null = null
+let renderer: THREE.WebGLRenderer | null = null
+let latestBallPosition: THREE.Vector3 | null = null
+let animationFrameId: number | null = null
 
 const input = new Input()
 let chargeStartTime = 0
@@ -176,6 +186,33 @@ function showGoalFlash(container: HTMLElement, callback: () => void): void {
   }, 1500)
 }
 
+function startRenderLoop(): void {
+  let lastTime = performance.now()
+
+  function animate(time: number): void {
+    animationFrameId = requestAnimationFrame(animate)
+    const delta = Math.min((time - lastTime) / 1000, 0.05)
+    lastTime = time
+
+    if (cameraController && latestBallPosition) {
+      cameraController.update(latestBallPosition, delta)
+    }
+
+    if (renderer && scene && cameraController) {
+      renderer.render(scene, cameraController.camera)
+    }
+  }
+
+  animationFrameId = requestAnimationFrame(animate)
+}
+
+function stopRenderLoop(): void {
+  if (animationFrameId !== null) {
+    cancelAnimationFrame(animationFrameId)
+    animationFrameId = null
+  }
+}
+
 function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; replayController: ReplayController } {
   if (currentScreen) {
     currentScreen.unmount()
@@ -206,6 +243,34 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
   appRoot.appendChild(gameContainer)
   hud.mount(gameContainer)
 
+  scene = new THREE.Scene()
+  scene.background = new THREE.Color(0x1a1a2e)
+  scene.add(createPitch())
+
+  const aspect = window.innerWidth / window.innerHeight
+  cameraController = new CameraController(aspect)
+
+  renderer = new THREE.WebGLRenderer({ antialias: true })
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  gameContainer.prepend(renderer.domElement)
+
+  const handleResize = (): void => {
+    const w = window.innerWidth
+    const h = window.innerHeight
+    if (cameraController) {
+      cameraController.camera.aspect = w / h
+      cameraController.camera.updateProjectionMatrix()
+    }
+    renderer?.setSize(w, h)
+  }
+  window.addEventListener('resize', handleResize)
+
+  const ballMesh = createBallMesh()
+  scene.add(ballMesh)
+
+  startRenderLoop()
+
   const replayController = new ReplayController()
   const intervalId = startGameInputLoop(hud)
 
@@ -230,14 +295,30 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
       hud.updateClock(state.clock)
       hud.updateMiniMap(state.players)
       hud.setPing(client.getLatency())
+
+      latestBallPosition = new THREE.Vector3(
+        state.ball.position.x,
+        state.ball.position.y,
+        state.ball.position.z,
+      )
     },
     onGameGoal: (payload: GoalEventPayload) => {
       audio.play('goal')
+
+      if (cameraController) {
+        const ballPos = latestBallPosition ?? new THREE.Vector3(0, 0, 0)
+        cameraController.activateReplayMode(payload.team, ballPos)
+      }
+
       showGoalFlash(gameContainer, () => {
         replayController.start(payload.replayData.snapshots, {
           onState: () => {},
-          onComplete: () => {},
-          onSkip: () => {},
+          onComplete: () => {
+            cameraController?.deactivateReplayMode()
+          },
+          onSkip: () => {
+            cameraController?.deactivateReplayMode()
+          },
         })
       })
     },
@@ -245,6 +326,7 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
       if (payload.type === 'fulltime') {
         audio.play('whistle-long')
         clearInterval(intervalId)
+        stopRenderLoop()
         hud.unmount()
         showPostMatch(payload as unknown as FulltimePayload, gameContainer)
         return
