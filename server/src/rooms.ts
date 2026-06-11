@@ -75,6 +75,12 @@ export function getRoom(code: string): Room | undefined {
   return rooms.get(code)
 }
 
+export function areBothReady(code: string): boolean {
+  const room = rooms.get(code)
+  if (!room || room.players.size < 2) return false
+  return Array.from(room.players.values()).every((p) => p.ready)
+}
+
 export function serializeRoom(room: Room): { code: string; players: { id: string; ready: boolean }[] } {
   return {
     code: room.code,

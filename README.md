@@ -10,8 +10,16 @@ Two human players each command an 11-player team (AI controls the other 10), swi
 football/
 ├── server/          # Node.js + Socket.io game server
 │   ├── src/
-│   │   ├── index.ts # Entry point, Socket.io setup + room events
-│   │   └── rooms.ts # Room management (create, join, ready, disconnect)
+│   │   ├── index.ts        # Entry point, Socket.io setup + room events
+│   │   ├── rooms.ts        # Room management (create, join, ready, disconnect)
+│   │   └── match/
+│   │       ├── Match.ts     # 60 Hz authoritative game loop
+│   │       ├── Player.ts    # Player state (position, velocity, stamina)
+│   │       ├── Team.ts      # Team data structure (11 players, score)
+│   │       ├── physics.ts   # Ball physics (stub)
+│   │       ├── ai.ts        # AI behaviour (stub)
+│   │       ├── collision.ts # Collision detection (stub)
+│   │       └── goalDetection.ts # Goal detection (stub)
 │   └── package.json
 ├── client/          # Vite + Three.js frontend
 │   ├── src/
@@ -109,7 +117,7 @@ cam.flipSide()
 ## Network Events
 
 | Event | Direction | Payload |
-|---|---|---|
+|---|---|---|---|
 | `room:create` | C→S | — |
 | `room:created` | S→C | `{ roomCode }` |
 | `room:join` | C→S | `{ roomCode }` |
@@ -117,6 +125,38 @@ cam.flipSide()
 | `room:error` | S→C | `{ message }` |
 | `player:ready` | C→S | — |
 | `player:left` | S→C | `{ playerId }` |
+| `match:start` | S→C | `{ config }` |
+| `game:input` | C→S | `{ keys: bitmask, timestamp }` |
+| `game:state` | S→C | `{ players[], ball, score, clock, phase }` |
+
+## Server-Side Game Loop
+
+The authoritative game simulation runs at **60 ticks/sec** in `server/src/match/Match.ts`:
+
+- **Tick rate**: `setInterval` at 16.67ms interval
+- **Clock**: configurable countdown (time mode) or count-up (goals mode)
+- **Phases**: `firstHalf` → `halftime` → `secondHalf` → `fulltime`
+- **Hooks**: each tick calls physics, AI, collision, and goal detection stubs (filled in by subsequent tasks)
+- **Broadcasting**: after each tick, a `game:state` snapshot is sent to both clients via Socket.io
+
+### Game State Snapshot
+
+```ts
+{
+  players: { id, team, position, velocity, rotation, stamina, isHumanControlled, isGk }[]
+  ball:    { position, velocity }
+  score:   { teamA: number, teamB: number }
+  clock:   number
+  phase:   'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
+}
+```
+
+### Match Start Flow
+
+1. Both players ready in lobby → `match:start` emitted
+2. A `Match` instance is created with the room's two player IDs
+3. Each team has 11 players (1 GK + 10 outfield), first outfield player is human-controlled
+4. Inputs flow via `game:input` bitmask events, consumed each tick
 
 ## CI/CD Pipeline
 

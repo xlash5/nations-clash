@@ -6,10 +6,12 @@ export interface Position {
 
 export interface PlayerState {
   id: string
-  teamId: string
+  team: 'home' | 'away'
   position: Position
+  velocity: Position
   rotation: number
-  isActive: boolean
+  stamina: number
+  isHumanControlled: boolean
   isGk: boolean
 }
 
@@ -18,10 +20,32 @@ export interface BallState {
   velocity: Position
 }
 
-export interface MatchState {
+export interface GameState {
   players: PlayerState[]
   ball: BallState
-  score: [number, number]
+  score: { teamA: number; teamB: number }
   clock: number
-  phase: 'kickoff' | 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
+  phase: 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
 }
+
+export interface MatchConfig {
+  mode: 'time' | 'goals'
+  duration: number  // seconds for time mode
+  goalsToWin: number  // for goals mode
+}
+
+export interface PlayerInput {
+  up: boolean
+  down: boolean
+  left: boolean
+  right: boolean
+  sprint: boolean
+  shoot: boolean
+  pass: boolean
+  tackle: boolean
+  slideTackle: boolean
+  switchPlayer: boolean
+}
+
+export const TICK_MS = 1000 / 60
+export const TICK_S = TICK_MS / 1000
