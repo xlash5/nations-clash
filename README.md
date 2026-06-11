@@ -22,7 +22,9 @@ football/
 │   │   │   ├── MainMenu.ts   # Create/Join room screen
 │   │   │   └── Lobby.ts      # Player list + ready button
 │   │   └── game/
-│   │       └── Pitch.ts  # 3D pitch, goals, stadium shell, lighting
+│   │       ├── Pitch.ts  # 3D pitch, goals, stadium shell, lighting
+│   │       ├── PlayerMesh.ts # Low-poly humanoid player model
+│   │       └── BallMesh.ts   # Icosahedron soccer ball
 │   ├── public/audio/ # SFX files (placeholder)
 │   ├── index.html
 │   └── package.json
@@ -59,6 +61,27 @@ Procedural Three.js geometry composed in `client/src/game/Pitch.ts`:
 - **Goals**: white box-frame (posts + crossbar) with semi-transparent wireframe net (back, top, left, right panels)
 - **Stadium shell**: four low-poly box stands around the pitch
 - **Lighting**: ambient light + directional sun + fill light
+
+## Player Meshes
+
+Procedural low-poly humanoid models in `client/src/game/PlayerMesh.ts`:
+
+- **Torso**: box geometry coloured by team kit colour
+- **Head**: sphere geometry with skin tone
+- **Limbs**: cylinder geometry for upper/lower arms and legs
+- **Kit colour**: passed as a parameter; all players share the same mesh shape
+- **Flat shading** for consistent low-poly aesthetic
+- Exported as `createPlayerMesh(color: string): THREE.Group`
+
+## Ball Mesh
+
+Procedural soccer ball in `client/src/game/BallMesh.ts`:
+
+- **Geometry**: `IcosahedronGeometry` with detail level 1 (80 faces for a round-ish shape)
+- **Pentagon pattern**: vertex-colored — the 12 original icosahedron vertices are darkened to suggest pentagon panels
+- **Scale**: ~0.22 m radius (regulation size 5)
+- **Flat shading** with vertex colouring
+- Exported as `createBallMesh(): THREE.Mesh`
 
 ## Network Events
 
