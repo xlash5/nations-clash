@@ -2,6 +2,7 @@ export class HUD {
   private container: HTMLDivElement
   private powerBarContainer: HTMLDivElement
   private powerBarFill: HTMLDivElement
+  private activePlayerEl: HTMLDivElement
 
   constructor() {
     this.container = document.createElement('div')
@@ -16,6 +17,7 @@ export class HUD {
       alignItems: 'center',
       gap: '4px',
       pointerEvents: 'none',
+      zIndex: '100',
     })
 
     const label = document.createElement('span')
@@ -49,14 +51,38 @@ export class HUD {
 
     this.powerBarContainer.appendChild(this.powerBarFill)
     this.container.appendChild(this.powerBarContainer)
+
+    this.activePlayerEl = document.createElement('div')
+    this.activePlayerEl.id = 'hud-active-player'
+    Object.assign(this.activePlayerEl.style, {
+      position: 'absolute',
+      top: '16px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      color: 'white',
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      fontWeight: 'bold',
+      textShadow: '1px 1px 3px rgba(0,0,0,0.9)',
+      pointerEvents: 'none',
+      zIndex: '100',
+      display: 'block',
+      padding: '6px 14px',
+      borderRadius: '4px',
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      border: '2px solid transparent',
+      transition: 'border-color 0.15s',
+    })
   }
 
   mount(parent: HTMLElement): void {
     parent.appendChild(this.container)
+    parent.appendChild(this.activePlayerEl)
   }
 
   unmount(): void {
     this.container.remove()
+    this.activePlayerEl.remove()
   }
 
   show(): void {
@@ -78,5 +104,10 @@ export class HUD {
     } else {
       this.powerBarFill.style.backgroundColor = '#ff3333'
     }
+  }
+
+  setActivePlayer(playerId: string, teamColor: string): void {
+    this.activePlayerEl.textContent = `▶ ${playerId}`
+    this.activePlayerEl.style.borderColor = teamColor
   }
 }

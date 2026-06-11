@@ -8,6 +8,7 @@ export class Team {
   players: Player[]
   score: number
   formationName: FormationName
+  humanControlledIndex: number
 
   constructor(id: 'home' | 'away', humanPlayerId: string, playerCount: number = 11) {
     this.id = id
@@ -15,6 +16,7 @@ export class Team {
     this.players = []
     this.score = 0
     this.formationName = '4-4-2'
+    this.humanControlledIndex = 1
 
     for (let i = 0; i < playerCount; i++) {
       const isGk = i === 0
@@ -22,6 +24,6 @@ export class Team {
       this.players.push(player)
     }
 
-    this.players[1].isHumanControlled = true
+    this.players[this.humanControlledIndex].isHumanControlled = true
   }
 }

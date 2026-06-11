@@ -4,7 +4,7 @@ import { Lobby } from './ui/Lobby'
 import { HUD } from './game/HUD'
 import { ReplayController } from './game/ReplayController'
 import { Input, KEY_SHOOT, KEY_PASS } from './game/Input'
-import type { GoalEventPayload } from '../../shared/types.js'
+import type { GameState, GoalEventPayload } from '../../shared/types.js'
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 
@@ -124,7 +124,7 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
   })
 
   const info = document.createElement('div')
-  info.textContent = 'Match started! Controls: WASD=move, J=shoot, K=pass, Shift=sprint'
+  info.textContent = 'Match started! WASD=move, Shift=sprint, J=shoot, K=pass, I=switch player'
   Object.assign(info.style, {
     color: 'white',
     fontFamily: 'monospace',
@@ -138,13 +138,20 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
 
   const replayController = new ReplayController()
 
+  const teamColors: Record<string, string> = { home: '#e63946', away: '#457b9d' }
+
   client.setCallbacks({
     onRoomCreated: () => {},
     onRoomJoined: () => {},
     onRoomError: () => {},
     onPlayerLeft: () => {},
     onMatchStart: () => {},
-    onGameState: () => {},
+    onGameState: (state: GameState) => {
+      const controlled = state.players.find((p) => p.isHumanControlled)
+      if (controlled) {
+        hud.setActivePlayer(controlled.id, teamColors[controlled.team] ?? '#ffffff')
+      }
+    },
     onGameGoal: (payload: GoalEventPayload) => {
       showGoalFlash(gameContainer, () => {
         replayController.start(payload.replayData.snapshots, {

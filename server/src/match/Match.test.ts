@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Server } from 'socket.io'
 import { Match, type MatchPhase } from './Match.js'
-import type { GameState, MatchConfig } from '../../../shared/types.js'
+import type { GameState, MatchConfig, PlayerInput } from '../../../shared/types.js'
 import { TICK_S } from '../../../shared/types.js'
 
 function createMockIo(): Server {
@@ -369,6 +369,165 @@ describe('Match', () => {
       expect(match.isRunning()).toBe(true)
       match.stop()
       vi.useRealTimers()
+    })
+  })
+
+  describe('player switching', () => {
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+    })
+
+    function moveAllOutfieldFar(team: typeof match.teamA): void {
+      for (let i = 1; i < team.players.length; i++) {
+        team.players[i].position = { x: 9999, y: 0, z: 9999 }
+      }
+    }
+
+    it('getNearestOutfieldPlayer returns nearest non-GK to the ball', () => {
+      const team = match.teamA
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      const nearest = (match as any).getNearestOutfieldPlayer(team)
+      expect(nearest).toBe(team.players[2])
+    })
+
+    it('getNearestOutfieldPlayer never returns the GK', () => {
+      const team = match.teamA
+      team.players[0].position = { x: 0, y: 0, z: 0 }
+      team.players[1].position = { x: 50, y: 0, z: 50 }
+      match.ball.position = { x: 0, y: 0, z: 0 }
+
+      const nearest = (match as any).getNearestOutfieldPlayer(team)
+      expect(nearest).not.toBe(team.players[0])
+      expect(nearest!.isGk).toBe(false)
+    })
+
+    it('getNearestOutfieldPlayer returns null when only GK remains', () => {
+      const team = match.teamA
+      team.players = team.players.filter((p: any) => p.isGk)
+
+      const nearest = (match as any).getNearestOutfieldPlayer(team)
+      expect(nearest).toBeNull()
+    })
+
+    it('switchPlayer changes humanControlledIndex to nearest outfield player', () => {
+      const team = match.teamA
+      expect(team.humanControlledIndex).toBe(1)
+
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      ;(match as any).switchPlayer(team)
+      expect(team.humanControlledIndex).toBe(2)
+    })
+
+    it('switchPlayer switches to second-nearest when current is already nearest', () => {
+      const team = match.teamA
+      expect(team.humanControlledIndex).toBe(1)
+
+      moveAllOutfieldFar(team)
+      team.players[1].position = { x: 5, y: 0, z: 5 }
+      team.players[2].position = { x: 10, y: 0, z: 10 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      ;(match as any).switchPlayer(team)
+      expect(team.humanControlledIndex).toBe(2)
+    })
+
+    it('switchPlayer never selects the goalkeeper', () => {
+      const team = match.teamA
+      moveAllOutfieldFar(team)
+      team.players[0].position = { x: 1, y: 0, z: 1 }
+      team.players[1].position = { x: 50, y: 0, z: 50 }
+      match.ball.position = { x: 0, y: 0, z: 0 }
+
+      ;(match as any).switchPlayer(team)
+      expect(team.humanControlledIndex).not.toBe(0)
+    })
+
+    it('switchPlayer toggles isHumanControlled flags correctly', () => {
+      const team = match.teamA
+      expect(team.players[1].isHumanControlled).toBe(true)
+
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      ;(match as any).switchPlayer(team)
+      expect(team.players[1].isHumanControlled).toBe(false)
+      expect(team.players[2].isHumanControlled).toBe(true)
+    })
+
+    it('switchPlayer does nothing when only GK is left (no outfield players)', () => {
+      const team = match.teamA
+      const humanIdx = team.humanControlledIndex
+
+      team.players = team.players.filter((p: any) => p.isGk)
+      team.players[0].isHumanControlled = true
+      team.humanControlledIndex = 0
+
+      ;(match as any).switchPlayer(team)
+      expect(team.humanControlledIndex).toBe(0)
+      expect(team.players[0].isHumanControlled).toBe(true)
+    })
+
+    it('applyPlayerInputs triggers switch on rising edge of switchPlayer input', () => {
+      const team = match.teamA
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      const input: PlayerInput = {
+        up: false, down: false, left: false, right: false,
+        sprint: false, shoot: false, pass: false,
+        tackle: false, slideTackle: false, switchPlayer: true,
+      }
+      match.handleInput('host-id', input)
+      ;(match as any).tick()
+
+      expect(team.humanControlledIndex).toBe(2)
+    })
+
+    it('holding switchPlayer key does not switch repeatedly (rising edge only)', () => {
+      const team = match.teamA
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      const input: PlayerInput = {
+        up: false, down: false, left: false, right: false,
+        sprint: false, shoot: false, pass: false,
+        tackle: false, slideTackle: false, switchPlayer: true,
+      }
+      match.handleInput('host-id', input)
+      ;(match as any).tick()
+      expect(team.humanControlledIndex).toBe(2)
+
+      ;(match as any).tick()
+      expect(team.humanControlledIndex).toBe(2)
+    })
+
+    it('getState reflects isHumanControlled after switch', () => {
+      const team = match.teamA
+      moveAllOutfieldFar(team)
+      team.players[2].position = { x: 5, y: 0, z: 5 }
+      match.ball.position = { x: 6, y: 0, z: 6 }
+
+      const input: PlayerInput = {
+        up: false, down: false, left: false, right: false,
+        sprint: false, shoot: false, pass: false,
+        tackle: false, slideTackle: false, switchPlayer: true,
+      }
+      match.handleInput('host-id', input)
+      ;(match as any).tick()
+
+      const state = match.getState()
+      const homeControlled = state.players.find((p) => p.team === 'home' && p.isHumanControlled)
+      expect(homeControlled).toBeDefined()
+      expect(homeControlled!.id).toBe('home-2')
     })
   })
 })

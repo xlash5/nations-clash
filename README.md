@@ -124,6 +124,7 @@ Client-side keyboard input capture and bitmask packing in `client/src/game/Input
 
 - **Keyboard listener**: tracks pressed/released keys via `keydown`/`keyup` DOM events
 - **Keys**: Arrow Up/Down/Left/Right (or WASD), Shift (sprint), J (shoot), K (pass), L (tackle), U (slide tackle), I (switch player)
+- **Switch player (I)**: switches control to the nearest outfield teammate to the ball; second-nearest if already closest
 - **Bitmask packing**: each key maps to a power-of-two bit; `getBitmask()` returns a single `number` with all pressed keys OR'd together
 - **Dual binding**: arrow keys and WASD both map to movement bits; either Shift key maps to sprint
 - **Default prevention**: arrow keys and Shift are prevented from scrolling the page
@@ -182,6 +183,30 @@ Server-side charge kicking in `server/src/match/Player.ts` with execution in `Ma
 ### Test Coverage
 
 49 unit tests cover charge start, accumulation, release, shoot/pass overlap, and power proportionality.
+
+## Player Switching
+
+Server-side player switching in `server/src/match/Match.ts`:
+
+- **Key**: `I` to switch control to the nearest outfield teammate to the ball
+- **Logic**: distances are computed per-tick using squared Euclidean distance from each outfield player to the ball
+- **Second-nearest**: if the current controller is already the closest to the ball, pressing `I` switches to the second-closest
+- **GK exclusion**: the goalkeeper is never selectable — always AI-controlled
+- **Flag toggle**: `isHumanControlled` is toggled on the old and new player; the previous controller reverts to AI behaviour
+- **Rising-edge**: the switch is triggered on key-down only (rising edge), so holding `I` does not cycle repeatedly
+- **State broadcast**: `GameState` reflects `isHumanControlled` per player; the client HUD displays the active player ID with a team-coloured border
+
+### Usage
+
+```ts
+// In Match tick — handled automatically via game:input bitmask
+// Switch from current controller to nearest (or second-nearest) outfield player
+match.handleInput(playerId, { switchPlayer: true, ... })
+```
+
+### Test Coverage
+
+11 unit tests cover nearest-player selection, GK exclusion, second-nearest fallback, flag toggling, rising-edge detection, the no-outfield edge case, and state reflection.
 
 ## Slow-Motion Replay
 
