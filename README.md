@@ -39,7 +39,7 @@ GitHub Actions workflows are defined in `.github/workflows/`:
 | Workflow | Trigger | Steps |
 |---|---|---|
 | **CI** | Every push & PR (all branches) | `npm ci` → typecheck → lint → test → build |
-| **CD** | Push to `main` | `npm ci` → build → deploy to Railway |
+| **CD** | Push to `master` | `npm ci` → build → deploy to Railway |
 
 CI runs on Node 18 and 20 in parallel. CD requires `RAILWAY_TOKEN` secret to be set in the GitHub repository.
 
