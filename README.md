@@ -32,6 +32,17 @@ npm test        # Runs Vitest across all packages
 npm run typecheck  # TypeScript compiler check
 ```
 
+## CI/CD Pipeline
+
+GitHub Actions workflows are defined in `.github/workflows/`:
+
+| Workflow | Trigger | Steps |
+|---|---|---|
+| **CI** | Every push & PR (all branches) | `npm ci` → typecheck → lint → test → build |
+| **CD** | Push to `master` | `npm ci` → build → deploy to Railway |
+
+CI runs on Node 18 and 20 in parallel. CD requires `RAILWAY_TOKEN` secret to be set in the GitHub repository.
+
 ## Tech Stack
 
 | Layer | Technology |
