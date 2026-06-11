@@ -607,8 +607,8 @@ describe('Match', () => {
     it('free kick sets lastTouch to kicker', () => {
       ;(match as any).startFreeKick({ x: 0, y: 0, z: 0 }, 'home', 'away')
       ;(match as any).executeFreeKick({ type: 'shoot', power: 0.5 })
-      expect(match.lastTouch).not.toBeNull()
-      expect(match.lastTouch!.team).toBe('home')
+      expect((match as any).lastTouch).not.toBeNull()
+      expect((match as any).lastTouch.team).toBe('home')
     })
 
     it('emits foul game:event with position and team data', () => {
