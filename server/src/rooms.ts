@@ -6,9 +6,20 @@ export interface PlayerInfo {
   ready: boolean
 }
 
+export interface TeamSelection {
+  teamId: string | null
+}
+
+export interface HomeAwayAssignment {
+  playerId: string
+  teamId: string
+  side: 'home' | 'away'
+}
+
 export interface Room {
   code: string
   players: Map<string, PlayerInfo>
+  teamSelections: Map<string, TeamSelection>
 }
 
 const rooms = new Map<string, Room>()
@@ -32,7 +43,7 @@ export function createRoom(): string {
     code = generateCode()
   } while (rooms.has(code))
 
-  rooms.set(code, { code, players: new Map() })
+  rooms.set(code, { code, players: new Map(), teamSelections: new Map() })
   return code
 }
 
@@ -86,4 +97,52 @@ export function serializeRoom(room: Room): { code: string; players: { id: string
     code: room.code,
     players: Array.from(room.players.values()),
   }
+}
+
+export function selectTeam(code: string, playerId: string, teamId: string): Room {
+  const room = rooms.get(code)
+  if (!room) throw new Error('Room not found')
+  if (!room.players.has(playerId)) throw new Error('Player not in room')
+  room.teamSelections.set(playerId, { teamId })
+  return room
+}
+
+export function areBothTeamsSelected(code: string): boolean {
+  const room = rooms.get(code)
+  if (!room || room.players.size < 2) return false
+  if (room.teamSelections.size < 2) return false
+  return Array.from(room.teamSelections.values()).every((s) => s.teamId !== null)
+}
+
+export function getTeamSelection(code: string, playerId: string): TeamSelection | undefined {
+  const room = rooms.get(code)
+  if (!room) return undefined
+  return room.teamSelections.get(playerId)
+}
+
+export function assignHomeAway(code: string): [HomeAwayAssignment, HomeAwayAssignment] {
+  const room = rooms.get(code)
+  if (!room) throw new Error('Room not found')
+
+  const playerIds = Array.from(room.players.keys())
+  if (playerIds.length !== 2) throw new Error('Need exactly 2 players')
+
+  const seed = code.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+  const homeIdx = seed % 2
+
+  const homePlayerId = playerIds[homeIdx]
+  const awayPlayerId = playerIds[1 - homeIdx]
+
+  const homeTeamId = room.teamSelections.get(homePlayerId)!.teamId!
+  const awayTeamId = room.teamSelections.get(awayPlayerId)!.teamId!
+
+  return [
+    { playerId: homePlayerId, teamId: homeTeamId, side: 'home' },
+    { playerId: awayPlayerId, teamId: awayTeamId, side: 'away' },
+  ]
+}
+
+export function hasTeamPhaseStarted(code: string): boolean {
+  const room = rooms.get(code)
+  return room?.teamSelections.size === 2
 }

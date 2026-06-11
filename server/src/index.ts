@@ -1,8 +1,9 @@
 import { createServer } from 'http'
 import { Server } from 'socket.io'
-import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, serializeRoom, areBothReady } from './rooms.js'
+import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, serializeRoom, areBothReady, selectTeam, areBothTeamsSelected, assignHomeAway, getTeamSelection } from './rooms.js'
 import { Match } from './match/Match.js'
-import type { MatchConfig } from '../../shared/types.js'
+import { TEAMS } from './data/teams.js'
+import type { MatchConfig, TeamData } from '../../shared/types.js'
 
 const httpServer = createServer()
 
@@ -44,15 +45,38 @@ io.on('connection', (socket) => {
       io.to(currentRoomCode).emit('room:joined', serializeRoom(room))
 
       if (areBothReady(currentRoomCode)) {
-        const players = Array.from(room.players.keys())
-        const config: MatchConfig = { mode: 'time', duration: 120, goalsToWin: 5 }
-        const match = new Match(io, currentRoomCode, config, players[0], players[1])
-        activeMatches.set(currentRoomCode, match)
-        match.start()
-        io.to(currentRoomCode).emit('match:start', { config })
+        io.to(currentRoomCode).emit('match:teamSelect', { teams: TEAMS })
       }
     } catch {
       // player not in a valid state
+    }
+  })
+
+  socket.on('match:selectTeam', ({ teamId }: { teamId: string }) => {
+    if (!currentRoomCode) return
+    try {
+      selectTeam(currentRoomCode, socket.id, teamId)
+      const selection = getTeamSelection(currentRoomCode, socket.id)
+      io.to(currentRoomCode).emit('team:selected', { playerId: socket.id, teamId, teamName: TEAMS.find((t) => t.id === teamId)?.name })
+
+      if (areBothTeamsSelected(currentRoomCode)) {
+        const [home, away] = assignHomeAway(currentRoomCode)
+        const homeTeam = TEAMS.find((t) => t.id === home.teamId)!
+        const awayTeam = TEAMS.find((t) => t.id === away.teamId)!
+
+        io.to(currentRoomCode).emit('bothTeamsSelected', {
+          home: { ...home, teamData: homeTeam },
+          away: { ...away, teamData: awayTeam },
+        })
+
+        const config: MatchConfig = { mode: 'time', duration: 120, goalsToWin: 5 }
+        const match = new Match(io, currentRoomCode, config, home.playerId, away.playerId)
+        activeMatches.set(currentRoomCode, match)
+        match.start()
+        io.to(currentRoomCode).emit('match:start', { config, homeTeam, awayTeam, homePlayerId: home.playerId, awayPlayerId: away.playerId })
+      }
+    } catch {
+      // invalid selection
     }
   })
 

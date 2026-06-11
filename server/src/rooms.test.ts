@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, __resetRoomsForTest } from './rooms.js'
+import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, selectTeam, areBothTeamsSelected, getTeamSelection, assignHomeAway, __resetRoomsForTest } from './rooms.js'
 
 describe('rooms', () => {
   beforeEach(() => {
@@ -66,5 +66,81 @@ describe('rooms', () => {
     const { wasLastPlayer } = removePlayer(code, 'player-1')
     expect(wasLastPlayer).toBe(true)
     expect(getRoom(code)).toBeUndefined()
+  })
+
+  describe('team selection', () => {
+    it('selectTeam stores team ID per player', () => {
+      const code = createRoom()
+      joinRoom(code, 'player-1')
+      joinRoom(code, 'player-2')
+      selectTeam(code, 'player-1', 'england')
+      expect(getTeamSelection(code, 'player-1')!.teamId).toBe('england')
+    })
+
+    it('selectTeam throws for invalid room', () => {
+      expect(() => selectTeam('XXXXXX', 'player-1', 'england')).toThrow('Room not found')
+    })
+
+    it('selectTeam throws for player not in room', () => {
+      const code = createRoom()
+      joinRoom(code, 'player-1')
+      expect(() => selectTeam(code, 'player-3', 'england')).toThrow('Player not in room')
+    })
+
+    it('areBothTeamsSelected returns false when only one player selected', () => {
+      const code = createRoom()
+      joinRoom(code, 'player-1')
+      joinRoom(code, 'player-2')
+      selectTeam(code, 'player-1', 'england')
+      expect(areBothTeamsSelected(code)).toBe(false)
+    })
+
+    it('areBothTeamsSelected returns true when both players selected', () => {
+      const code = createRoom()
+      joinRoom(code, 'player-1')
+      joinRoom(code, 'player-2')
+      selectTeam(code, 'player-1', 'england')
+      selectTeam(code, 'player-2', 'brazil')
+      expect(areBothTeamsSelected(code)).toBe(true)
+    })
+
+    it('areBothTeamsSelected returns false for non-existent room', () => {
+      expect(areBothTeamsSelected('XXXXXX')).toBe(false)
+    })
+
+    it('assignHomeAway returns deterministic assignments', () => {
+      const code = createRoom()
+      joinRoom(code, 'player-1')
+      joinRoom(code, 'player-2')
+      selectTeam(code, 'player-1', 'england')
+      selectTeam(code, 'player-2', 'brazil')
+      const [home, away] = assignHomeAway(code)
+      expect(home.side).toBe('home')
+      expect(away.side).toBe('away')
+      expect(home.playerId).toBeTruthy()
+      expect(away.playerId).toBeTruthy()
+      expect(home.teamId).toBeTruthy()
+      expect(away.teamId).toBeTruthy()
+    })
+
+    it('assignHomeAway is consistent (same code → same result)', () => {
+      const code = createRoom()
+      joinRoom(code, 'player-1')
+      joinRoom(code, 'player-2')
+      selectTeam(code, 'player-1', 'england')
+      selectTeam(code, 'player-2', 'brazil')
+      const [r1] = assignHomeAway(code)
+      const [r2] = assignHomeAway(code)
+      expect(r1.playerId).toBe(r2.playerId)
+      expect(r1.side).toBe(r2.side)
+    })
+
+    it('assignHomeAway throws for non-existent room', () => {
+      expect(() => assignHomeAway('XXXXXX')).toThrow('Room not found')
+    })
+
+    it('getTeamSelection returns undefined for non-existent room', () => {
+      expect(getTeamSelection('XXXXXX', 'p1')).toBeUndefined()
+    })
   })
 })

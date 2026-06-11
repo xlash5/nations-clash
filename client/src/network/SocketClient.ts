@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client'
-import type { GameState, GoalEventPayload } from '../../../shared/types.js'
+import type { GameState, GoalEventPayload, TeamData } from '../../../shared/types.js'
 
 export interface RoomPayload {
   roomCode: string
@@ -20,6 +20,23 @@ export interface PlayerLeftPayload {
 
 export interface MatchStartPayload {
   config: { mode: string; duration: number; goalsToWin: number }
+  homeTeam?: TeamData
+  awayTeam?: TeamData
+}
+
+export interface TeamSelectPayload {
+  teams: TeamData[]
+}
+
+export interface TeamSelectedPayload {
+  playerId: string
+  teamId: string
+  teamName?: string
+}
+
+export interface BothTeamsSelectedPayload {
+  home: { playerId: string; teamId: string; side: 'home'; teamData: TeamData }
+  away: { playerId: string; teamId: string; side: 'away'; teamData: TeamData }
 }
 
 export interface GameEventPayload {
@@ -33,6 +50,9 @@ export interface SocketClientCallbacks {
   onRoomError: (payload: RoomErrorPayload) => void
   onPlayerLeft: (payload: PlayerLeftPayload) => void
   onMatchStart: (payload: MatchStartPayload) => void
+  onMatchTeamSelect: (payload: TeamSelectPayload) => void
+  onTeamSelected: (payload: TeamSelectedPayload) => void
+  onBothTeamsSelected: (payload: BothTeamsSelectedPayload) => void
   onGameState: (state: GameState) => void
   onGameGoal: (payload: GoalEventPayload) => void
   onGameEvent: (payload: GameEventPayload) => void
@@ -50,6 +70,9 @@ export class SocketClient {
     this.socket.on('room:joined', (payload) => this.callbacks.onRoomJoined(payload))
     this.socket.on('room:error', (payload) => this.callbacks.onRoomError(payload))
     this.socket.on('player:left', (payload) => this.callbacks.onPlayerLeft(payload))
+    this.socket.on('match:teamSelect', (payload) => this.callbacks.onMatchTeamSelect(payload))
+    this.socket.on('team:selected', (payload) => this.callbacks.onTeamSelected(payload))
+    this.socket.on('bothTeamsSelected', (payload) => this.callbacks.onBothTeamsSelected(payload))
     this.socket.on('match:start', (payload) => this.callbacks.onMatchStart(payload))
     this.socket.on('game:state', (payload) => this.callbacks.onGameState(payload))
     this.socket.on('game:goal', (payload) => this.callbacks.onGameGoal(payload))
@@ -70,6 +93,10 @@ export class SocketClient {
 
   toggleReady(): void {
     this.socket.emit('player:ready')
+  }
+
+  selectTeam(teamId: string): void {
+    this.socket.emit('match:selectTeam', { teamId })
   }
 
   sendInput(keys: number, chargeType: string | null, chargeTimestamp: number): void {
