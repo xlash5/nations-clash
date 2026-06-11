@@ -1,11 +1,49 @@
 import { createServer } from 'http'
+import { readFileSync, existsSync } from 'fs'
+import { extname, join, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import { Server } from 'socket.io'
 import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, serializeRoom, areBothReady, selectTeam, areBothTeamsSelected, assignHomeAway, getTeamSelection, setPlayerSession, markPlayerDisconnected, updatePlayerId } from './rooms.js'
 import { Match } from './match/Match.js'
 import { TEAMS } from './data/teams.js'
 import type { MatchConfig, TeamData } from '../../shared/types.js'
 
-const httpServer = createServer()
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const publicPath = join(__dirname, '..', 'public')
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+}
+
+const httpServer = createServer((req, res) => {
+  let url = req.url ?? '/'
+  if (url === '/') url = '/index.html'
+
+  const filePath = join(publicPath, url)
+
+  if (!existsSync(filePath)) {
+    res.statusCode = 404
+    res.end('Not found')
+    return
+  }
+
+  const ext = extname(filePath)
+  const contentType = MIME_TYPES[ext] ?? 'application/octet-stream'
+
+  res.writeHead(200, { 'Content-Type': contentType })
+  res.end(readFileSync(filePath))
+})
 
 const io = new Server(httpServer, {
   cors: { origin: '*' },

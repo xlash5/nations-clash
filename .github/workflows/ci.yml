@@ -25,3 +25,21 @@ jobs:
       - run: npm run lint
 
       - run: npm test
+
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: docker build -t football-game .
+
+      - run: docker run -d -p 3000:3000 --name football-test football-game
+
+      - run: sleep 3
+
+      - run: docker run --rm --network host curlimages/curl:latest -f http://localhost:3000
+
+      - name: Cleanup
+        if: always()
+        run: docker stop football-test && docker rm football-test
