@@ -26,6 +26,11 @@ jobs:
 
       - run: npm test
 
+      - run: npm run build
+
+      - name: Bundle size check
+        run: npm run build:check-size
+
   docker:
     runs-on: ubuntu-latest
 
