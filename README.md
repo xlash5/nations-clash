@@ -32,7 +32,8 @@ football/
 │   │   │   └── SocketClient.ts # Socket.io client wrapper
 │   │   ├── ui/
 │   │   │   ├── MainMenu.ts   # Create/Join room screen
-│   │   │   └── Lobby.ts      # Player list + ready button
+│   │   │   ├── Lobby.ts      # Player list + ready button
+│   │   │   └── TeamSelect.ts # 32-team grid with flag, name, kit colours
 │   │   └── game/
 │   │       ├── Pitch.ts           # 3D pitch, goals, stadium shell, lighting
 │   │       ├── PlayerMesh.ts      # Low-poly humanoid player model
@@ -65,7 +66,10 @@ npm run typecheck  # TypeScript compiler check
 2. Player A clicks **Create Room** — a 6-character room code is generated
 3. Player B enters the code and clicks **Join Room**
 4. Both players see the lobby with their IDs and can click **Ready**
-5. When both are ready (future: transition to team select)
+5. When both are ready, the **Team Select** screen appears with 32 World Cup teams
+6. Each player clicks a team card (flag, name, kit colours) to select
+7. Both players see each other's selection in real time
+8. Home/away is assigned deterministically; both selected → match starts
 
 ## 3D Pitch
 
@@ -431,7 +435,7 @@ Server-side free kick set-piece logic in `server/src/match/Match.ts`:
 ## Network Events
 
 | Event | Direction | Payload |
-|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|
 | `room:create` | C→S | — |
 | `room:created` | S→C | `{ roomCode }` |
 | `room:join` | C→S | `{ roomCode }` |
@@ -439,7 +443,11 @@ Server-side free kick set-piece logic in `server/src/match/Match.ts`:
 | `room:error` | S→C | `{ message }` |
 | `player:ready` | C→S | — |
 | `player:left` | S→C | `{ playerId }` |
-| `match:start` | S→C | `{ config }` |
+| `match:teamSelect` | S→C | `{ teams[] }` |
+| `match:selectTeam` | C→S | `{ teamId }` |
+| `team:selected` | S→C | `{ playerId, teamId, teamName }` |
+| `bothTeamsSelected` | S→C | `{ home: { playerId, teamId, side, teamData }, away: {...} }` |
+| `match:start` | S→C | `{ config, homeTeam?, awayTeam? }` |
 | `game:input` | C→S | `{ keys: bitmask, chargeType, chargeTimestamp }` |
 | `game:state` | S→C | `{ players[], ball, score, clock, phase }` |
 | `game:goal` | S→C | `{ scorer, team, isOwnGoal, replayData }` |
@@ -469,10 +477,14 @@ The authoritative game simulation runs at **60 ticks/sec** in `server/src/match/
 
 ### Match Start Flow
 
-1. Both players ready in lobby → `match:start` emitted
-2. A `Match` instance is created with the room's two player IDs
-3. Each team has 11 players (1 GK + 10 outfield), first outfield player is human-controlled
-4. Inputs flow via `game:input` bitmask events, consumed each tick
+1. Both players ready in lobby → `match:teamSelect` emitted with all 32 teams
+2. **Team Select** screen renders a grid; each player clicks a team card
+3. Each selection is sent via `match:selectTeam`; opponent's pick is broadcast via `team:selected`
+4. When both have selected, home/away is assigned deterministically (seeded by room code)
+5. `bothTeamsSelected` then `match:start` emitted with team assignments
+6. A `Match` instance is created with the room's two player IDs
+7. Each team has 11 players (1 GK + 10 outfield), first outfield player is human-controlled
+8. Inputs flow via `game:input` bitmask events, consumed each tick
 
 ## CI/CD Pipeline
 

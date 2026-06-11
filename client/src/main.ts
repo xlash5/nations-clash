@@ -1,6 +1,7 @@
-import { SocketClient, type RoomJoinedPayload, type MatchStartPayload } from './network/SocketClient'
+import { SocketClient, type RoomJoinedPayload, type MatchStartPayload, type TeamSelectPayload, type TeamSelectedPayload, type BothTeamsSelectedPayload } from './network/SocketClient'
 import { MainMenu } from './ui/MainMenu'
 import { Lobby } from './ui/Lobby'
+import { TeamSelect } from './ui/TeamSelect'
 import { HUD } from './game/HUD'
 import { ReplayController } from './game/ReplayController'
 import { Input, KEY_SHOOT, KEY_PASS } from './game/Input'
@@ -18,24 +19,19 @@ const input = new Input()
 let chargeStartTime = 0
 let chargeType: string | null = null
 
-const client = new SocketClient(SERVER_URL, {
-  onRoomCreated: () => {
-    // handled inline in MainMenu callback
-  },
-  onRoomJoined: () => {
-    // handled inline in Lobby transition
-  },
-  onRoomError: () => {
-    // handled inline in MainMenu
-  },
-  onPlayerLeft: () => {
-    // handled via room:joined broadcast
-  },
-        onMatchStart: () => {},
-        onGameState: () => {},
-        onGameGoal: () => {},
-        onGameEvent: () => {},
-      })
+  const client = new SocketClient(SERVER_URL, {
+    onRoomCreated: () => {},
+    onRoomJoined: () => {},
+    onRoomError: () => {},
+    onPlayerLeft: () => {},
+    onMatchStart: () => {},
+    onMatchTeamSelect: () => {},
+    onTeamSelected: () => {},
+    onBothTeamsSelected: () => {},
+    onGameState: () => {},
+    onGameGoal: () => {},
+    onGameEvent: () => {},
+  })
 
 input.attach()
 
@@ -187,6 +183,9 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
     onRoomError: () => {},
     onPlayerLeft: () => {},
     onMatchStart: () => {},
+    onMatchTeamSelect: () => {},
+    onTeamSelected: () => {},
+    onBothTeamsSelected: () => {},
     onGameState: (state: GameState) => {
       const controlled = state.players.find((p) => p.isHumanControlled)
       if (controlled) {
@@ -227,6 +226,9 @@ function showMenu(): void {
         onRoomError: (payload) => menu.showError(payload.message),
         onPlayerLeft: () => {},
         onMatchStart: () => {},
+        onMatchTeamSelect: () => {},
+        onTeamSelected: () => {},
+        onBothTeamsSelected: () => {},
         onGameState: () => {},
         onGameGoal: () => {},
         onGameEvent: () => {},
@@ -240,6 +242,9 @@ function showMenu(): void {
         onRoomError: (payload) => menu.showError(payload.message),
         onPlayerLeft: () => {},
         onMatchStart: () => {},
+        onMatchTeamSelect: () => {},
+        onTeamSelected: () => {},
+        onBothTeamsSelected: () => {},
         onGameState: () => {},
         onGameGoal: () => {},
         onGameEvent: () => {},
@@ -288,6 +293,12 @@ function showLobby(roomCode: string, players: { id: string; ready: boolean }[] =
       }
       document.addEventListener('keydown', replayKeyHandler)
     },
+    onMatchTeamSelect: (payload: TeamSelectPayload) => {
+      lobby.unmount()
+      showTeamSelect(payload.teams)
+    },
+    onTeamSelected: () => {},
+    onBothTeamsSelected: () => {},
     onGameState: () => {},
     onGameGoal: () => {},
     onGameEvent: () => {},
@@ -297,6 +308,57 @@ function showLobby(roomCode: string, players: { id: string; ready: boolean }[] =
   lobby.updatePlayers(players)
   lobby.mount(appRoot)
   currentScreen = lobby
+}
+
+function showTeamSelect(teams: TeamSelectPayload['teams']): void {
+  if (currentScreen) {
+    currentScreen.unmount()
+  }
+
+  appRoot.innerHTML = ''
+
+  const ts = new TeamSelect(teams, {
+    onSelectTeam: (teamId: string) => {
+      client.selectTeam(teamId)
+    },
+  })
+
+  let gameIntervalId: ReturnType<typeof setInterval> | null = null
+  let replayController: ReplayController | null = null
+  let replayKeyHandler: ((e: KeyboardEvent) => void) | null = null
+
+  client.setCallbacks({
+    onRoomCreated: () => {},
+    onRoomJoined: () => {},
+    onRoomError: () => {},
+    onPlayerLeft: () => {},
+    onMatchStart: (_payload: MatchStartPayload) => {
+      ts.unmount()
+      const hud = new HUD()
+      const game = showGame(hud)
+      gameIntervalId = game.intervalId
+      replayController = game.replayController
+
+      replayKeyHandler = (e: KeyboardEvent) => {
+        if (e.code === 'Space' && replayController?.isActive()) {
+          e.preventDefault()
+          replayController.skip()
+        }
+      }
+      document.addEventListener('keydown', replayKeyHandler)
+    },
+    onMatchTeamSelect: () => {},
+    onTeamSelected: (payload: TeamSelectedPayload) => {
+      ts.setOpponentSelection(payload.playerId, payload.teamId)
+    },
+    onBothTeamsSelected: () => {},
+    onGameState: () => {},
+    onGameGoal: () => {},
+    onGameEvent: () => {},
+  })
+
+  ts.mount(appRoot)
+  currentScreen = ts
 }
 
 showMenu()
