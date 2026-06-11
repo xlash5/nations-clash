@@ -25,3 +25,22 @@ jobs:
       - run: npm run lint
 
       - run: npm test
+
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: docker build -t football-game .
+
+      - run: docker run -d -p 3000:3000 --name football-test football-game
+
+      - run: sleep 3
+
+      - run: docker exec football-test wget -q -O - http://localhost:3000 | head -5
+
+      - name: Cleanup
+        if: always()
+        continue-on-error: true
+        run: docker stop football-test 2>/dev/null; docker rm football-test 2>/dev/null

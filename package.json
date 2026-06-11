@@ -11,7 +11,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p client/tsconfig.json",
     "build": "npm run build -w server && npm run build -w client",
-    "lint": "echo 'No linter configured yet'"
+    "lint": "echo 'No linter configured yet'",
+    "test:docker": "docker build -t football-game . && docker run -d -p 3000:3000 football-game && sleep 2 && curl -f http://localhost:3000"
   },
   "devDependencies": {
     "concurrently": "^8.2.0",

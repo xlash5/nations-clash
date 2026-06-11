@@ -65,6 +65,24 @@ npm test        # Runs Vitest across all packages
 npm run typecheck  # TypeScript compiler check
 ```
 
+## Docker
+
+```bash
+# Build the image
+docker build -t football-game .
+
+# Run the container
+docker run -d -p 3000:3000 football-game
+
+# Test that the app is served
+curl http://localhost:3000
+```
+
+The Dockerfile uses a multi-stage build:
+1. **build-client** — installs client dependencies and runs `vite build`
+2. **build-server** — installs server dependencies and compiles TypeScript
+3. **production** — copies compiled server and built client into a minimal `node:18-alpine` image; server serves the client as static files
+
 ### How to Play Screen
 
 A controls reference screen available from the Main Menu. Shows a table of all keyboard controls and explanations of charge-based kicking, player switching, and the stamina system.
