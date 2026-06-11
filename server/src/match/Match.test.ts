@@ -213,15 +213,29 @@ describe('Match', () => {
       }
     })
 
-    it('transitions to fulltime when clock reaches 0', () => {
+    it('enters extended play when clock reaches 0 (goal in flight rule)', () => {
       match.clock = TICK_S
+      ;(match as any).tick()
+      expect((match as any).extendedPlay).toBe(true)
+      expect(match.clock).toBe(0)
+    })
+
+    it('extended play ends on ball out of bounds, transitioning to fulltime', () => {
+      match.clock = TICK_S
+      ;(match as any).tick()
+      expect((match as any).extendedPlay).toBe(true)
+
+      match.ball.position = { x: 100, y: 0, z: 0 }
       ;(match as any).tick()
       expect(match.phase).toBe('fulltime')
     })
 
-    it('emits fulltime event on transition', () => {
+    it('emits fulltime event after extended play ends', () => {
       match.clock = TICK_S
       ;(match as any).tick()
+      match.ball.position = { x: 100, y: 0, z: 0 }
+      ;(match as any).tick()
+
       const allCalls = (io.to('ROOM01').emit as any).mock.calls
       const fulltimeCall = allCalls.find(
         (call: any[]) => call[0] === 'game:event' && call[1]?.type === 'fulltime',
@@ -240,6 +254,9 @@ describe('Match', () => {
       }
       match.clock = TICK_S
       ;(match as any).tick()
+      match.ball.position = { x: 100, y: 0, z: 0 }
+      ;(match as any).tick()
+      expect(match.phase).toBe('fulltime')
     })
 
     it('does not advance clock', () => {
@@ -653,6 +670,163 @@ describe('Match', () => {
         position: { x: 10, y: 0, z: -15 },
         foulingTeam: 'away',
         fouledTeam: 'home',
+      })
+    })
+  })
+
+  describe('edge cases', () => {
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+    })
+
+    describe('ball out of bounds', () => {
+      it('resets ball to centre and emits ballOutOfBounds event when ball crosses touchline', () => {
+        match.ball.position = { x: 100, y: 0.2, z: 0 }
+        ;(match as any).tick()
+
+        expect(match.ball.position).toEqual({ x: 0, y: 0, z: 0 })
+        const emitCalls = (io.to('ROOM01').emit as any).mock.calls
+        const outCall = emitCalls.find(
+          (call: any[]) => call[0] === 'game:event' && call[1]?.type === 'ballOutOfBounds',
+        )
+        expect(outCall).toBeDefined()
+      })
+
+      it('resets ball to centre when ball crosses goal line wide of goal', () => {
+        match.ball.position = { x: 10, y: 0.2, z: 100 }
+        ;(match as any).tick()
+
+        expect(match.ball.position).toEqual({ x: 0, y: 0, z: 0 })
+      })
+
+      it('does not trigger when ball is within pitch boundaries', () => {
+        match.ball.position = { x: 20, y: 0.2, z: 20 }
+        ;(match as any).tick()
+
+        expect(match.ball.position.x).toBe(20)
+      })
+    })
+
+    describe('extended play (goal in flight at full-time)', () => {
+      it('does not immediately end match when clock reaches 0 in secondHalf', () => {
+        ;(match as any).phase = 'secondHalf'
+        match.clock = TICK_S
+        ;(match as any).tick()
+
+        expect((match as any).extendedPlay).toBe(true)
+        expect(match.phase).toBe('secondHalf')
+        expect(match.clock).toBe(0)
+      })
+
+      it('counts a goal scored during extended play and ends match', () => {
+        ;(match as any).phase = 'secondHalf'
+        match.clock = TICK_S
+        ;(match as any).tick()
+        expect((match as any).extendedPlay).toBe(true)
+
+        const goalPos = { x: 1, y: 0.2, z: 53.5 }
+        match.ball.position = goalPos
+        ;(match as any).lastTouch = { playerId: 'home-3', team: 'home' }
+        ;(match as any).tick()
+
+        expect(match.score.teamA).toBe(1)
+        expect(match.phase).toBe('fulltime')
+        expect(match.isRunning()).toBe(false)
+      })
+
+      it('ends match when ball goes out of bounds during extended play', () => {
+        ;(match as any).phase = 'secondHalf'
+        match.clock = TICK_S
+        ;(match as any).tick()
+        expect((match as any).extendedPlay).toBe(true)
+
+        match.ball.position = { x: 100, y: 0.2, z: 0 }
+        ;(match as any).tick()
+
+        expect(match.phase).toBe('fulltime')
+        expect(match.isRunning()).toBe(false)
+      })
+
+      it('emits fulltime event when extended play ends on out-of-bounds', () => {
+        ;(match as any).phase = 'secondHalf'
+        match.clock = TICK_S
+        ;(match as any).tick()
+
+        match.ball.position = { x: 100, y: 0.2, z: 0 }
+        ;(match as any).tick()
+
+        const emitCalls = (io.to('ROOM01').emit as any).mock.calls
+        const fulltimeCall = emitCalls.find(
+          (call: any[]) => call[0] === 'game:event' && call[1]?.type === 'fulltime',
+        )
+        expect(fulltimeCall).toBeDefined()
+        expect(fulltimeCall[1].score).toEqual({ teamA: 0, teamB: 0 })
+      })
+
+      it('does not affect firstHalf when clock reaches 0', () => {
+        match.clock = TICK_S
+        ;(match as any).tick()
+
+        expect(match.phase).toBe('halftime')
+        expect((match as any).extendedPlay).toBe(false)
+      })
+    })
+
+    describe('no double-counted goals', () => {
+      it('goalCooldown prevents immediate second goal detection', () => {
+        ;(match as any).goalCooldown = true
+        const goalPos = { x: 1, y: 0.2, z: 53.5 }
+        match.ball.position = goalPos
+
+        const goal = (match as any).checkGoal?.((match as any).ball.position, (match as any).lastTouch)
+        const directCheck = typeof goal === 'undefined'
+
+        const callCountBefore = (io.to('ROOM01').emit as any).mock.calls.length
+        ;(match as any).tick()
+        const callCountAfter = (io.to('ROOM01').emit as any).mock.calls.length
+
+        expect(match.score.teamA).toBe(0)
+      })
+
+      it('goalCooldown is set after awardGoal', () => {
+        const goal = { team: 'home' as const, scorer: 'home-3', isOwnGoal: false, side: 'positive' as const }
+        ;(match as any).awardGoal(goal)
+        expect((match as any).goalCooldown).toBe(true)
+      })
+
+      it('goalCooldown is cleared after kickoff', () => {
+        const goal = { team: 'home' as const, scorer: 'home-3', isOwnGoal: false, side: 'positive' as const }
+        ;(match as any).awardGoal(goal)
+        expect((match as any).goalCooldown).toBe(true)
+
+        for (let i = 0; i < 3 * 60; i++) {
+          ;(match as any).tick()
+        }
+
+        expect((match as any).goalCooldown).toBe(false)
+      })
+    })
+
+    describe('match start guard', () => {
+      it('prevents preMatch transition when a player is disconnected', () => {
+        const freshMatch = new Match(io, 'ROOM01', defaultConfig(), 'host-id', 'guest-id')
+        ;(freshMatch as any).disconnectedPlayers.add('host-id')
+        ;(freshMatch as any).tick()
+        expect(freshMatch.phase).toBe('preMatch')
+      })
+
+      it('allows preMatch transition when no players are disconnected', () => {
+        const freshMatch = new Match(io, 'ROOM01', defaultConfig(), 'host-id', 'guest-id')
+        advanceThroughPreMatch(freshMatch, io)
+        expect(freshMatch.phase).toBe('firstHalf')
+      })
+
+      it('pauses countdown when player disconnects mid-countdown', () => {
+        const freshMatch = new Match(io, 'ROOM01', defaultConfig(), 'host-id', 'guest-id')
+        const preMatchCountdown = (freshMatch as any).preMatchCountdown
+        ;(freshMatch as any).disconnectedPlayers.add('host-id')
+        ;(freshMatch as any).tick()
+        expect((freshMatch as any).preMatchCountdown).toBe(preMatchCountdown)
       })
     })
   })

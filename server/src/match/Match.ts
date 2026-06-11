@@ -6,7 +6,7 @@ import { Player } from './Player.js'
 import { updatePhysics, kick } from './physics.js'
 import { updateAI } from './ai.js'
 import { getAbsoluteFormationPositions } from '../data/formations.js'
-import { updateCollisions } from './collision.js'
+import { updateCollisions, checkBallOutOfBounds } from './collision.js'
 import { checkGoal, type GoalResult } from './goalDetection.js'
 import { standingTackle, slideTackle, shouldFoul } from './tackling.js'
 import { SLIDE_DURATION } from './Player.js'
@@ -49,6 +49,7 @@ export class Match {
   private freeKickFoulingTeam: 'home' | 'away' | null
   private freeKickTakerId: string | null
   private previousPhase: MatchPhase | null
+  private extendedPlay: boolean
   private paused: boolean
   private disconnectedPlayers: Set<string>
   private disconnectTimers: Map<string, number>
@@ -85,6 +86,7 @@ export class Match {
     this.freeKickFoulingTeam = null
     this.freeKickTakerId = null
     this.previousPhase = null
+    this.extendedPlay = false
     this.paused = false
     this.disconnectedPlayers = new Set()
     this.disconnectTimers = new Map()
@@ -252,6 +254,11 @@ export class Match {
   }
 
   private tickPreMatch(): void {
+    if (this.disconnectedPlayers.size > 0) {
+      this.broadcast()
+      return
+    }
+
     const currentSecond = Math.ceil(this.preMatchCountdown)
     if (currentSecond < this.lastEmittedCountdown && currentSecond >= 1) {
       this.emitEvent('countdown', { value: currentSecond })
@@ -295,11 +302,22 @@ export class Match {
       const goal = checkGoal(this.ball.position, this.lastTouch)
       if (goal) {
         this.awardGoal(goal)
+        if (this.extendedPlay) {
+          this.endExtendedPlay()
+          this.broadcast()
+          return
+        }
       }
     }
 
+    if (!this.goalCooldown && !this.extendedPlay && checkBallOutOfBounds(this.ball.position)) {
+      this.handleBallOutOfBounds()
+    }
+
     if (this.config.mode === 'time') {
-      this.clock = Math.max(0, this.clock - TICK_S)
+      if (!this.extendedPlay) {
+        this.clock = Math.max(0, this.clock - TICK_S)
+      }
     } else {
       this.clock += TICK_S
     }
@@ -321,6 +339,13 @@ export class Match {
   }
 
   private checkPhaseTransition(): void {
+    if (this.extendedPlay) {
+      if (this.goalCooldown || checkBallOutOfBounds(this.ball.position)) {
+        this.endExtendedPlay()
+      }
+      return
+    }
+
     if (this.config.mode === 'time') {
       if (this.clock <= 0) {
         if (this.phase === 'firstHalf') {
@@ -328,9 +353,8 @@ export class Match {
           this.halftimeTimer = 15
           this.emitEvent('halftime')
         } else if (this.phase === 'secondHalf') {
-          this.phase = 'fulltime'
-          this.emitFulltime()
-          this.stop()
+          this.extendedPlay = true
+          this.clock = 0
         }
       }
     } else if (this.config.mode === 'goals') {
@@ -340,6 +364,18 @@ export class Match {
         this.stop()
       }
     }
+  }
+
+  private endExtendedPlay(): void {
+    this.extendedPlay = false
+    this.phase = 'fulltime'
+    this.emitFulltime()
+    this.stop()
+  }
+
+  private handleBallOutOfBounds(): void {
+    this.setupKickoff()
+    this.io.to(this.roomCode).emit('game:event', { type: 'ballOutOfBounds' })
   }
 
   private emitFulltime(): void {

@@ -52,6 +52,8 @@ describe('rematch flow', () => {
     ;(match as any).phase = 'secondHalf'
     match.clock = TICK_S
     ;(match as any).tick()
+    match.ball.position = { x: 100, y: 0, z: 0 }
+    ;(match as any).tick()
     expect(match.phase).toBe('fulltime')
   })
 
