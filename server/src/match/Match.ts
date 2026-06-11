@@ -4,6 +4,7 @@ import { TICK_MS, TICK_S } from '../../../shared/types.js'
 import { Team } from './Team.js'
 import { updatePhysics, kick } from './physics.js'
 import { updateAI } from './ai.js'
+import { getAbsoluteFormationPositions } from '../data/formations.js'
 import { updateCollisions } from './collision.js'
 import { checkGoal, type GoalResult } from './goalDetection.js'
 
@@ -212,14 +213,15 @@ export class Match {
       spin: { x: 0, y: 0, z: 0 },
     }
 
-    const homeFormation = this.getFormationPositions(-1)
-    const awayFormation = this.getFormationPositions(1)
+    const homeFormation = getAbsoluteFormationPositions(this.teamA.formationName, -1)
+    const awayFormation = getAbsoluteFormationPositions(this.teamB.formationName, 1)
 
     for (let i = 0; i < this.teamA.players.length; i++) {
       const pos = homeFormation[i] ?? { x: 0, y: 0, z: 0 }
       this.teamA.players[i].position = { ...pos }
       this.teamA.players[i].velocity = { x: 0, y: 0, z: 0 }
       this.teamA.players[i].hasBall = false
+      this.teamA.players[i].homePosition = { ...pos }
     }
 
     for (let i = 0; i < this.teamB.players.length; i++) {
@@ -227,36 +229,11 @@ export class Match {
       this.teamB.players[i].position = { ...pos }
       this.teamB.players[i].velocity = { x: 0, y: 0, z: 0 }
       this.teamB.players[i].hasBall = false
+      this.teamB.players[i].homePosition = { ...pos }
     }
 
     this.goalCooldown = false
     this.lastTouch = null
-  }
-
-  private getFormationPositions(side: -1 | 1): Position[] {
-    const positions: Position[] = []
-    const pitchHalf = 52.5
-    const pitchWidth = 34
-
-    positions.push({ x: 0, y: 0, z: side * pitchHalf * 0.95 })
-
-    const formation: [number, number][] = [
-      [-10, 30], [0, 30], [10, 30],
-      [-20, 10], [-7, 10], [7, 10], [20, 10],
-      [-15, -10], [0, -20], [15, -10],
-    ]
-
-    const halfLen = pitchHalf * 0.8
-
-    for (const [relX, relZ] of formation) {
-      positions.push({
-        x: relX * (pitchWidth / 34),
-        y: 0,
-        z: side * (relZ / 30 * halfLen),
-      })
-    }
-
-    return positions
   }
 
   private updateLastTouchFromCollisions(): void {

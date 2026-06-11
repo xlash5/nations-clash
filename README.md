@@ -12,12 +12,14 @@ football/
 │   ├── src/
 │   │   ├── index.ts        # Entry point, Socket.io setup + room events
 │   │   ├── rooms.ts        # Room management (create, join, ready, disconnect)
+│   │   ├── data/
+│   │   │   └── formations.ts # 5 formation templates (4-4-2, 4-3-3, 3-5-2, 4-2-3-1, 5-3-2)
 │   │   └── match/
 │   │       ├── Match.ts     # 60 Hz authoritative game loop
 │   │       ├── Player.ts    # Player state (position, velocity, stamina)
 │   │       ├── Team.ts      # Team data structure (11 players, score)
 │   │       ├── physics.ts   # Ball physics engine
-│   │       ├── ai.ts        # AI behaviour (stub)
+│   │       ├── ai.ts        # AI behaviour (HOLD/CHASE/RETREAT states)
 │   │       ├── collision.ts # Collision detection (player-ball, ball-goal, player-player)
 │   │       └── goalDetection.ts # Goal detection (stub)
 │   └── package.json
@@ -267,6 +269,29 @@ const player = new Player('p1', 'home')
 player.applyInput(playerInput, cameraSide, delta)
 player.tick(delta)
 ```
+
+## AI Behaviour & Formations
+
+Server-side AI for non-human players in `server/src/match/ai.ts` with formation templates in `server/src/data/formations.ts`:
+
+- **Formations**: 5 templates (4-4-2, 4-3-3, 3-5-2, 4-2-3-1, 5-3-2), each with 11 relative positions (GK + 10 outfield) mapped to absolute pitch coordinates
+- **AI states** per player:
+  - `HOLD`: stay near formation home position when team has possession and ball is outside player's zone
+  - `CHASE`: pursue the ball when it enters the player's zone (~20 units)
+  - `RETREAT`: fall back toward own half when opponent has possession
+- **State transitions**: ball possession determines team-wide state; proximity to ball triggers CHASE; opponent possession triggers RETREAT
+- **Goalkeeper AI**: stays on the goal line, interpolates x-position between ball and goal centre, dives toward fast shots heading toward goal within range
+- **Human exclusion**: the human-controlled player is skipped during AI updates; only the 10 non-human outfield players plus the GK receive AI commands
+
+### Exported functions
+
+| Function | Description |
+|---|---|
+| `updateAI(match, state)` | Impure wrapper called from Match tick loop; updates all AI players and GK |
+
+### Test Coverage
+
+34 unit tests cover formation positions (all 5 formations, boundary checks), AI state transitions (HOLD/CHASE/RETREAT), GK positioning (goal line, interpolation, clamping, dive logic), and integration (possession-based states, velocity cap, pitch clamping).
 
 ## Collision Detection
 
