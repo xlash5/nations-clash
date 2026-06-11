@@ -12,12 +12,14 @@ football/
 │   ├── src/
 │   │   ├── index.ts        # Entry point, Socket.io setup + room events
 │   │   ├── rooms.ts        # Room management (create, join, ready, disconnect)
+│   │   ├── data/
+│   │   │   └── formations.ts # 5 formation templates (4-4-2, 4-3-3, 3-5-2, 4-2-3-1, 5-3-2)
 │   │   └── match/
 │   │       ├── Match.ts     # 60 Hz authoritative game loop
 │   │       ├── Player.ts    # Player state (position, velocity, stamina)
 │   │       ├── Team.ts      # Team data structure (11 players, score)
 │   │       ├── physics.ts   # Ball physics engine
-│   │       ├── ai.ts        # AI behaviour (stub)
+│   │       ├── ai.ts        # AI behaviour (HOLD/CHASE/RETREAT states)
 │   │       ├── collision.ts # Collision detection (player-ball, ball-goal, player-player)
 │   │       └── goalDetection.ts # Goal detection (stub)
 │   └── package.json
@@ -34,7 +36,8 @@ football/
 │   │       ├── PlayerMesh.ts      # Low-poly humanoid player model
 │   │       ├── BallMesh.ts        # Icosahedron soccer ball
 │   │       ├── CameraController.ts # Tele-broadcast camera with lerp + flip
-│   │       └── Input.ts           # Keyboard capture + bitmask packing
+│   │       ├── Input.ts           # Keyboard capture + bitmask packing
+│   │       └── ReplayController.ts # Slow-motion goal replay playback
 │   ├── public/audio/ # SFX files (placeholder)
 │   ├── index.html
 │   └── package.json
@@ -121,6 +124,7 @@ Client-side keyboard input capture and bitmask packing in `client/src/game/Input
 
 - **Keyboard listener**: tracks pressed/released keys via `keydown`/`keyup` DOM events
 - **Keys**: Arrow Up/Down/Left/Right (or WASD), Shift (sprint), J (shoot), K (pass), L (tackle), U (slide tackle), I (switch player)
+- **Switch player (I)**: switches control to the nearest outfield teammate to the ball; second-nearest if already closest
 - **Bitmask packing**: each key maps to a power-of-two bit; `getBitmask()` returns a single `number` with all pressed keys OR'd together
 - **Dual binding**: arrow keys and WASD both map to movement bits; either Shift key maps to sprint
 - **Default prevention**: arrow keys and Shift are prevented from scrolling the page
@@ -180,6 +184,70 @@ Server-side charge kicking in `server/src/match/Player.ts` with execution in `Ma
 
 49 unit tests cover charge start, accumulation, release, shoot/pass overlap, and power proportionality.
 
+## Player Switching
+
+Server-side player switching in `server/src/match/Match.ts`:
+
+- **Key**: `I` to switch control to the nearest outfield teammate to the ball
+- **Logic**: distances are computed per-tick using squared Euclidean distance from each outfield player to the ball
+- **Second-nearest**: if the current controller is already the closest to the ball, pressing `I` switches to the second-closest
+- **GK exclusion**: the goalkeeper is never selectable — always AI-controlled
+- **Flag toggle**: `isHumanControlled` is toggled on the old and new player; the previous controller reverts to AI behaviour
+- **Rising-edge**: the switch is triggered on key-down only (rising edge), so holding `I` does not cycle repeatedly
+- **State broadcast**: `GameState` reflects `isHumanControlled` per player; the client HUD displays the active player ID with a team-coloured border
+
+### Usage
+
+```ts
+// In Match tick — handled automatically via game:input bitmask
+// Switch from current controller to nearest (or second-nearest) outfield player
+match.handleInput(playerId, { switchPlayer: true, ... })
+```
+
+### Test Coverage
+
+11 unit tests cover nearest-player selection, GK exclusion, second-nearest fallback, flag toggling, rising-edge detection, the no-outfield edge case, and state reflection.
+
+## Slow-Motion Replay
+
+After a goal, a slow-motion replay plays the last ~5 seconds of action from a slightly elevated angle.
+
+### Server-Side Replay Buffer
+
+In `server/src/match/Match.ts`:
+
+- **Buffer**: the last 300 `GameState` snapshots (5 seconds at 60 Hz) are retained
+- **`pushSnapshot(state)`**: appends a snapshot to the buffer; oldest entries are evicted when the cap is exceeded
+- **`getReplayData()`**: returns a copy of the buffered snapshots as `{ snapshots: GameStateSnapshot[] }`
+- **Snapshot capture**: `broadcast()` pushes a snapshot before emitting `game:state` each tick
+- **On goal**: `awardGoal()` includes `replayData` in the `game:goal` event sent to both clients
+
+### Client-Side Replay Controller
+
+In `client/src/game/ReplayController.ts`:
+
+- **Playback**: iterates through snapshots at 15 ticks/s (¼ speed of real-time)
+- **Skip**: `skip()` immediately ends playback and triggers the skip callback
+- **Overlay**: shows "Press SPACE to skip" text during replay
+
+### Goal Sequence Flow
+
+1. Goal detected on server → `game:goal` emitted with `replayData`
+2. Client shows "GOAL!" flash overlay for ~1.5s
+3. Replay starts playing back buffered snapshots in slow motion
+4. Player can press `Space` to skip the replay
+5. After replay ends (auto or skip), match resumes with kickoff
+
+### Network Event
+
+| Event | Direction | Payload |
+|---|---|---|
+| `game:goal` | S→C | `{ scorer, team, isOwnGoal, replayData: { snapshots[] } }` |
+
+### Test Coverage
+
+6 unit tests cover replay buffer push, capacity capping (300), oldest-entry eviction, copy semantics, tick integration, and goal event inclusion.
+
 ## Ball Physics
 
 Server-side ball physics engine in `server/src/match/physics.ts`:
@@ -227,6 +295,29 @@ player.applyInput(playerInput, cameraSide, delta)
 player.tick(delta)
 ```
 
+## AI Behaviour & Formations
+
+Server-side AI for non-human players in `server/src/match/ai.ts` with formation templates in `server/src/data/formations.ts`:
+
+- **Formations**: 5 templates (4-4-2, 4-3-3, 3-5-2, 4-2-3-1, 5-3-2), each with 11 relative positions (GK + 10 outfield) mapped to absolute pitch coordinates
+- **AI states** per player:
+  - `HOLD`: stay near formation home position when team has possession and ball is outside player's zone
+  - `CHASE`: pursue the ball when it enters the player's zone (~20 units)
+  - `RETREAT`: fall back toward own half when opponent has possession
+- **State transitions**: ball possession determines team-wide state; proximity to ball triggers CHASE; opponent possession triggers RETREAT
+- **Goalkeeper AI**: stays on the goal line, interpolates x-position between ball and goal centre, dives toward fast shots heading toward goal within range
+- **Human exclusion**: the human-controlled player is skipped during AI updates; only the 10 non-human outfield players plus the GK receive AI commands
+
+### Exported functions
+
+| Function | Description |
+|---|---|
+| `updateAI(match, state)` | Impure wrapper called from Match tick loop; updates all AI players and GK |
+
+### Test Coverage
+
+34 unit tests cover formation positions (all 5 formations, boundary checks), AI state transitions (HOLD/CHASE/RETREAT), GK positioning (goal line, interpolation, clamping, dive logic), and integration (possession-based states, velocity cap, pitch clamping).
+
 ## Collision Detection
 
 Server-side collision detection in `server/src/match/collision.ts`:
@@ -251,10 +342,43 @@ Server-side collision detection in `server/src/match/collision.ts`:
 
 Ball-player collision, deflection, and goal-post ricochet are covered by **25 unit tests**.
 
+## Tackling System
+
+Standing and slide tackles in `server/src/match/tackling.ts` with integration in `Player.ts` and `Match.ts`:
+
+- **Standing Tackle (`L`)**: short-range lunge (~1.5 m reach). If the opponent has the ball and is within range, the ball pops loose and possession changes. Mistimed attempts carry a ~20% foul chance. A ~0.5 s cooldown follows any tackle attempt.
+- **Slide Tackle (`U`)**: longer-range lunge (~3 m reach). The player slides along the ground for ~0.8 s, then enters a recovery period (~1 s) during which they cannot move or act. Higher foul chance (~40% on miss). On success the ball pops loose further; on miss the player is left out of position.
+- **Foul detection**: if a tackle fails (no ball contact), a random roll determines whether a foul occurred. On foul, a `game:event { type: 'foul' }` is emitted. Slide tackles foul more often than standing tackles.
+- **Rising edge**: tackle input is consumed on key-down only, so holding the key does not re-trigger.
+
+### Exported functions (pure)
+
+| Function | Description |
+|---|---|
+| `standingTackle(tacklerPos, opponentPos, opponentHasBall)` | Checks range, pops ball loose on success |
+| `slideTackle(tacklerPos, opponentPos, opponentHasBall)` | Longer range version of standing tackle |
+| `shouldFoul(tackleType)` | Random foul check based on tackle type probability |
+
+### Constants
+
+| Constant | Value |
+|---|---|
+| `TACKLE_STANDING_RANGE` | 1.5 m |
+| `TACKLE_SLIDE_RANGE` | 3.0 m |
+| `TACKLE_COOLDOWN` | 0.5 s |
+| `SLIDE_DURATION` | 0.8 s |
+| `SLIDE_RECOVERY` | 1.0 s |
+| `FOUL_CHANCE_STANDING` | 20% |
+| `FOUL_CHANCE_SLIDE` | 40% |
+
+### Test Coverage
+
+26 unit tests cover standing tackle range/success, slide tackle range/success, foul probability distribution (standing vs slide), tackle rising-edge detection, cooldown blocking, slide state machine (duration, recovery), and movement blocking during slide/recovery.
+
 ## Network Events
 
 | Event | Direction | Payload |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | `room:create` | C→S | — |
 | `room:created` | S→C | `{ roomCode }` |
 | `room:join` | C→S | `{ roomCode }` |
@@ -265,6 +389,8 @@ Ball-player collision, deflection, and goal-post ricochet are covered by **25 un
 | `match:start` | S→C | `{ config }` |
 | `game:input` | C→S | `{ keys: bitmask, chargeType, chargeTimestamp }` |
 | `game:state` | S→C | `{ players[], ball, score, clock, phase }` |
+| `game:goal` | S→C | `{ scorer, team, isOwnGoal, replayData }` |
+| `game:event` | S→C | `{ type, ...data }` |
 
 ## Server-Side Game Loop
 
