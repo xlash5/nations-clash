@@ -1,5 +1,7 @@
 import type { Position, PlayerInput } from '../../../shared/types.js'
 
+export type AIState = 'HOLD' | 'CHASE' | 'RETREAT'
+
 const BASE_SPEED = 8
 const SPRINT_MULTIPLIER = 1.5
 const STAMINA_DRAIN_PER_SECOND = 15
@@ -22,6 +24,11 @@ export class Player {
   chargeType: 'shoot' | 'pass' | null
   chargePower: number
 
+  aiState: AIState
+  homePosition: Position
+  gkDiveDirection: number | null
+  gkDiveTimer: number
+
   private prevShoot: boolean
   private prevPass: boolean
   private _kickRequest: { type: 'shoot' | 'pass'; power: number } | null
@@ -35,6 +42,10 @@ export class Player {
     this.stamina = MAX_STAMINA
     this.isHumanControlled = false
     this.isGk = isGk
+    this.aiState = 'HOLD'
+    this.homePosition = { x: 0, y: 0, z: 0 }
+    this.gkDiveDirection = null
+    this.gkDiveTimer = 0
     this.isSprinting = false
     this.hasBall = false
     this.chargeType = null
