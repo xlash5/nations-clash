@@ -295,4 +295,108 @@ describe('Player', () => {
       expect(player.hasBall).toBe(true)
     })
   })
+
+  describe('charge system — startCharge', () => {
+    it('pressing shoot sets chargeType and resets chargePower', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ shoot: true }), -1, 0)
+      expect(player.chargeType).toBe('shoot')
+      expect(player.chargePower).toBe(0)
+    })
+
+    it('pressing pass sets chargeType to pass', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ pass: true }), -1, 0)
+      expect(player.chargeType).toBe('pass')
+    })
+
+    it('does not start charge when no shoot/pass pressed', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input(), -1, 0)
+      expect(player.chargeType).toBeNull()
+      expect(player.chargePower).toBe(0)
+    })
+  })
+
+  describe('charge system — updateCharge', () => {
+    it('after 0.5s of holding shoot, chargePower ≈ 0.5', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ shoot: true }), -1, 0.5)
+      expect(player.chargePower).toBeCloseTo(0.5, 2)
+    })
+
+    it('chargePower fills to 1.0 after 1s', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ shoot: true }), -1, 1.0)
+      expect(player.chargePower).toBeCloseTo(1.0, 2)
+    })
+
+    it('chargePower does not exceed 1.0', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ shoot: true }), -1, 2.0)
+      expect(player.chargePower).toBe(1.0)
+    })
+  })
+
+  describe('charge system — releaseCharge', () => {
+    it('releasing shoot queues a kick request and resets charge state', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ shoot: true }), -1, 0.5)
+      player.applyInput(input(), -1, 0)
+      const req = player.consumeKickRequest()
+      expect(req).toEqual({ type: 'shoot', power: expect.closeTo(0.5, 2) })
+      expect(player.chargeType).toBeNull()
+      expect(player.chargePower).toBe(0)
+    })
+
+    it('releasing pass queues a pass kick request', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ pass: true }), -1, 0.3)
+      player.applyInput(input(), -1, 0)
+      const req = player.consumeKickRequest()
+      expect(req).toEqual({ type: 'pass', power: expect.closeTo(0.3, 2) })
+    })
+
+    it('request is consumed once and null thereafter', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ shoot: true }), -1, 0.5)
+      player.applyInput(input(), -1, 0)
+      expect(player.consumeKickRequest()).not.toBeNull()
+      expect(player.consumeKickRequest()).toBeNull()
+    })
+
+    it('no kick request when key never pressed', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input(), -1, 0.5)
+      expect(player.consumeKickRequest()).toBeNull()
+    })
+  })
+
+  describe('charge system — shoot vs pass overlap', () => {
+    it('pressing pass while already charging shoot switches to pass', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ shoot: true }), -1, 0.3)
+      expect(player.chargeType).toBe('shoot')
+      player.applyInput(input({ pass: true }), -1, 0.1)
+      expect(player.chargeType).toBe('pass')
+    })
+  })
+
+  describe('charge system — power proportional to hold time', () => {
+    it('brief tap gives low power', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ shoot: true }), -1, 0.1)
+      player.applyInput(input(), -1, 0)
+      const req = player.consumeKickRequest()
+      expect(req!.power).toBeCloseTo(0.1, 2)
+    })
+
+    it('long hold gives near max power', () => {
+      const player = new Player('p1', 'home')
+      player.applyInput(input({ shoot: true }), -1, 0.95)
+      player.applyInput(input(), -1, 0)
+      const req = player.consumeKickRequest()
+      expect(req!.power).toBeCloseTo(0.95, 2)
+    })
+  })
 })

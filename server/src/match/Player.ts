@@ -6,6 +6,7 @@ const STAMINA_DRAIN_PER_SECOND = 15
 const STAMINA_REGEN_PER_SECOND = 5
 const MIN_STAMINA_FOR_SPRINT = 10
 const MAX_STAMINA = 100
+const CHARGE_RATE = 1.0
 
 export class Player {
   readonly id: string
@@ -18,6 +19,12 @@ export class Player {
   isGk: boolean
   isSprinting: boolean
   hasBall: boolean
+  chargeType: 'shoot' | 'pass' | null
+  chargePower: number
+
+  private prevShoot: boolean
+  private prevPass: boolean
+  private _kickRequest: { type: 'shoot' | 'pass'; power: number } | null
 
   constructor(id: string, team: 'home' | 'away', isGk = false) {
     this.id = id
@@ -30,12 +37,18 @@ export class Player {
     this.isGk = isGk
     this.isSprinting = false
     this.hasBall = false
+    this.chargeType = null
+    this.chargePower = 0
+    this.prevShoot = false
+    this.prevPass = false
+    this._kickRequest = null
   }
 
   applyInput(input: PlayerInput, cameraSide: -1 | 1, delta: number): void {
     this.isSprinting = input.sprint && this.stamina >= MIN_STAMINA_FOR_SPRINT
 
     this.updateStamina(delta)
+    this.handleCharge(input, delta)
 
     if (!input.up && !input.down && !input.left && !input.right) {
       this.velocity.x = 0
@@ -49,6 +62,44 @@ export class Player {
     this.velocity.x = dir.x * speed
     this.velocity.z = dir.z * speed
     this.rotation = Math.atan2(dir.x, dir.z)
+  }
+
+  consumeKickRequest(): { type: 'shoot' | 'pass'; power: number } | null {
+    const req = this._kickRequest
+    this._kickRequest = null
+    return req
+  }
+
+  private handleCharge(input: PlayerInput, delta: number): void {
+    const shootDown = input.shoot && !this.prevShoot
+    const shootUp = !input.shoot && this.prevShoot
+    const passDown = input.pass && !this.prevPass
+    const passUp = !input.pass && this.prevPass
+
+    this.prevShoot = input.shoot
+    this.prevPass = input.pass
+
+    if (shootDown) {
+      this.chargeType = 'shoot'
+      this.chargePower = 0
+    } else if (passDown) {
+      this.chargeType = 'pass'
+      this.chargePower = 0
+    }
+
+    if (this.chargeType) {
+      this.chargePower = Math.min(1, this.chargePower + CHARGE_RATE * delta)
+    }
+
+    if (shootUp && this.chargeType === 'shoot') {
+      this._kickRequest = { type: 'shoot', power: this.chargePower }
+      this.chargeType = null
+      this.chargePower = 0
+    } else if (passUp && this.chargeType === 'pass') {
+      this._kickRequest = { type: 'pass', power: this.chargePower }
+      this.chargeType = null
+      this.chargePower = 0
+    }
   }
 
   tick(delta: number): void {

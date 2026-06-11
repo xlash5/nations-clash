@@ -114,6 +114,20 @@ cam.update(ballPosition, delta)
 cam.flipSide()
 ```
 
+## Charge-Based Kick System (Shoot & Pass)
+
+Server-side charge kicking in `server/src/match/Player.ts` with execution in `Match.ts`:
+
+- **Charge**: hold `J` (shoot) or `K` (pass) to charge power; fills from 0→1 over ~1 second
+- **Release**: releasing the key applies a kick impulse to the ball proportional to charge power
+- **Shoot**: ball launches in the direction the player is facing
+- **Pass**: ball launches toward the nearest teammate within a 30° cone (aim assist); falls back to facing direction if no teammate is in range
+- **Power bar**: client-side HUD display (`client/src/game/HUD.ts`) shows a horizontal bar that fills while charging, colour-coded green/yellow/red by power level
+
+### Test Coverage
+
+49 unit tests cover charge start, accumulation, release, shoot/pass overlap, and power proportionality.
+
 ## Ball Physics
 
 Server-side ball physics engine in `server/src/match/physics.ts`:
@@ -164,7 +178,7 @@ player.tick(delta)
 ## Network Events
 
 | Event | Direction | Payload |
-|---|---|---|---|
+|---|---|---|---|---|
 | `room:create` | C→S | — |
 | `room:created` | S→C | `{ roomCode }` |
 | `room:join` | C→S | `{ roomCode }` |
@@ -173,7 +187,7 @@ player.tick(delta)
 | `player:ready` | C→S | — |
 | `player:left` | S→C | `{ playerId }` |
 | `match:start` | S→C | `{ config }` |
-| `game:input` | C→S | `{ keys: bitmask, timestamp }` |
+| `game:input` | C→S | `{ keys: bitmask, chargeType, chargeTimestamp }` |
 | `game:state` | S→C | `{ players[], ball, score, clock, phase }` |
 
 ## Server-Side Game Loop
