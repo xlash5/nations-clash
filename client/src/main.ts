@@ -1,5 +1,6 @@
 import { SocketClient, type RoomJoinedPayload, type MatchStartPayload, type TeamSelectPayload, type TeamSelectedPayload, type BothTeamsSelectedPayload, type RematchStatusPayload, type FulltimePayload } from './network/SocketClient'
 import { MainMenu } from './ui/MainMenu'
+import { HowToPlay } from './ui/HowToPlay'
 import { Lobby } from './ui/Lobby'
 import { TeamSelect } from './ui/TeamSelect'
 import { PostMatch } from './ui/PostMatch'
@@ -347,10 +348,27 @@ function showMenu(): void {
       })
       client.joinRoom(code)
     },
+    onHowToPlay: () => showHowToPlay(),
   })
 
   currentScreen = menu
   menu.mount(appRoot)
+}
+
+function showHowToPlay(): void {
+  if (currentScreen) {
+    currentScreen.unmount()
+    currentScreen = null
+  }
+
+  appRoot.innerHTML = ''
+
+  const htp = new HowToPlay({
+    onBack: () => showMenu(),
+  })
+
+  currentScreen = htp
+  htp.mount(appRoot)
 }
 
 function showLobby(roomCode: string, players: { id: string; ready: boolean }[] = []): void {

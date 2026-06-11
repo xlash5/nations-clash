@@ -31,7 +31,8 @@ football/
 │   │   ├── network/
 │   │   │   └── SocketClient.ts # Socket.io client wrapper
 │   │   ├── ui/
-│   │   │   ├── MainMenu.ts   # Create/Join room screen
+│   │   │   ├── MainMenu.ts   # Create/Join room + How to Play button
+│   │   │   ├── HowToPlay.ts  # Controls reference + game mechanics
 │   │   │   ├── Lobby.ts      # Player list + ready button
 │   │   │   ├── TeamSelect.ts # 32-team grid with flag, name, kit colours
 │   │   │   └── PostMatch.ts  # Post-match results screen + rematch/leave
@@ -62,6 +63,10 @@ npm run dev     # Starts both server (port 3001) and client (port 5173)
 npm test        # Runs Vitest across all packages
 npm run typecheck  # TypeScript compiler check
 ```
+
+### How to Play Screen
+
+A controls reference screen available from the Main Menu. Shows a table of all keyboard controls and explanations of charge-based kicking, player switching, and the stamina system.
 
 ### Multiplayer Flow
 
