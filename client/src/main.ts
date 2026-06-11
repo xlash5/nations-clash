@@ -2,6 +2,7 @@ import { SocketClient, type RoomJoinedPayload, type MatchStartPayload } from './
 import { MainMenu } from './ui/MainMenu'
 import { Lobby } from './ui/Lobby'
 import { HUD } from './game/HUD'
+import { Input, KEY_SHOOT, KEY_PASS } from './game/Input'
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 
@@ -11,18 +12,7 @@ document.body.appendChild(appRoot)
 
 let currentScreen: { unmount: () => void } | null = null
 
-const KEY_UP = 1
-const KEY_DOWN = 2
-const KEY_LEFT = 4
-const KEY_RIGHT = 8
-const KEY_SPRINT = 16
-const KEY_SHOOT = 32
-const KEY_PASS = 64
-const KEY_TACKLE = 128
-const KEY_SLIDE_TACKLE = 256
-const KEY_SWITCH_PLAYER = 512
-
-const keysPressed: Record<string, boolean> = {}
+const input = new Input()
 let chargeStartTime = 0
 let chargeType: string | null = null
 
@@ -43,24 +33,11 @@ const client = new SocketClient(SERVER_URL, {
   onGameState: () => {},
 })
 
-function buildKeyBitmask(): number {
-  let keys = 0
-  if (keysPressed['ArrowUp'] || keysPressed['KeyW']) keys |= KEY_UP
-  if (keysPressed['ArrowDown'] || keysPressed['KeyS']) keys |= KEY_DOWN
-  if (keysPressed['ArrowLeft'] || keysPressed['KeyA']) keys |= KEY_LEFT
-  if (keysPressed['ArrowRight'] || keysPressed['KeyD']) keys |= KEY_RIGHT
-  if (keysPressed['ShiftLeft'] || keysPressed['ShiftRight']) keys |= KEY_SPRINT
-  if (keysPressed['KeyJ']) keys |= KEY_SHOOT
-  if (keysPressed['KeyK']) keys |= KEY_PASS
-  if (keysPressed['KeyL']) keys |= KEY_TACKLE
-  if (keysPressed['KeyU']) keys |= KEY_SLIDE_TACKLE
-  if (keysPressed['KeyI']) keys |= KEY_SWITCH_PLAYER
-  return keys
-}
+input.attach()
 
 function startGameInputLoop(hud: HUD): ReturnType<typeof setInterval> {
   const sendIntervalId = setInterval(() => {
-    const bitmask = buildKeyBitmask()
+    const bitmask = input.getBitmask()
     const isCharging = !!(bitmask & KEY_SHOOT) || !!(bitmask & KEY_PASS)
 
     if (isCharging) {
@@ -187,16 +164,5 @@ function showLobby(roomCode: string, players: { id: string; ready: boolean }[] =
   lobby.mount(appRoot)
   currentScreen = lobby
 }
-
-document.addEventListener('keydown', (e) => {
-  keysPressed[e.code] = true
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Shift'].includes(e.key)) {
-    e.preventDefault()
-  }
-})
-
-document.addEventListener('keyup', (e) => {
-  keysPressed[e.code] = false
-})
 
 showMenu()
