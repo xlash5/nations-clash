@@ -49,7 +49,7 @@ const io = new Server(httpServer, {
   cors: { origin: '*' },
 })
 
-const PORT = process.env.PORT ?? 3001
+const PORT = process.env.PORT ?? 3000
 
 const activeMatches = new Map<string, Match>()
 const rematchRequests = new Map<string, Set<string>>()
