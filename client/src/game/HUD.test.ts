@@ -172,8 +172,14 @@ describe('HUD', () => {
     expect(el.style.color).toBe('rgb(255, 204, 0)')
   })
 
-  it('setPing shows red for high latency', () => {
-    hud.setPing(200)
+  it('setPing shows orange for 100-200ms latency', () => {
+    hud.setPing(150)
+    const el = parent.querySelector('#hud-ping') as HTMLDivElement
+    expect(el.style.color).toBe('rgb(255, 136, 0)')
+  })
+
+  it('setPing shows red for >200ms latency', () => {
+    hud.setPing(250)
     const el = parent.querySelector('#hud-ping') as HTMLDivElement
     expect(el.style.color).toBe('rgb(255, 51, 51)')
   })

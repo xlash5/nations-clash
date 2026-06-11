@@ -155,6 +155,32 @@ describe('SocketClient', () => {
     expect(client.getLatency()).toBe(42)
   })
 
+  it('averages ping over last 10 samples', () => {
+    const client = new SocketClient('http://localhost:3001', callbacks)
+    for (let i = 0; i < 10; i++) {
+      mockOnHandlers['pong'](i * 10)
+    }
+    expect(client.getLatency()).toBe(45) // (0+10+20+30+40+50+60+70+80+90) / 10 = 45
+  })
+
+  it('replaces oldest ping sample when exceeding 10', () => {
+    const client = new SocketClient('http://localhost:3001', callbacks)
+    for (let i = 0; i < 10; i++) {
+      mockOnHandlers['pong'](50)
+    }
+    // push 11th sample (100), oldest (50) is removed
+    mockOnHandlers['pong'](100)
+    expect(client.getLatency()).toBeCloseTo(55, 0) // (50*9 + 100) / 10 = 55
+  })
+
+  it('getPingSamples returns a copy of samples', () => {
+    const client = new SocketClient('http://localhost:3001', callbacks)
+    mockOnHandlers['pong'](30)
+    const samples = client.getPingSamples()
+    samples.push(99)
+    expect(client.getPingSamples()).toEqual([30])
+  })
+
   it('setCallbacks updates active callbacks', () => {
     const client =     new SocketClient('http://localhost:3001', callbacks)
     const newCallbacks = {

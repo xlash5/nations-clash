@@ -75,10 +75,13 @@ export interface SocketClientCallbacks {
   onRematchAccepted: () => void
 }
 
+const PING_SAMPLE_COUNT = 10
+
 export class SocketClient {
   private socket: Socket
   private callbacks: SocketClientCallbacks
   private _latency: number = 0
+  private _pingSamples: number[] = []
 
   private _onConnect: (() => void) | null = null
 
@@ -110,6 +113,10 @@ export class SocketClient {
 
     this.socket.on('pong', (latency: number) => {
       this._latency = latency
+      this._pingSamples.push(latency)
+      if (this._pingSamples.length > PING_SAMPLE_COUNT) {
+        this._pingSamples.shift()
+      }
     })
   }
 
@@ -118,7 +125,13 @@ export class SocketClient {
   }
 
   getLatency(): number {
-    return this._latency
+    if (this._pingSamples.length === 0) return this._latency
+    const sum = this._pingSamples.reduce((a, b) => a + b, 0)
+    return sum / this._pingSamples.length
+  }
+
+  getPingSamples(): number[] {
+    return [...this._pingSamples]
   }
 
   setCallbacks(callbacks: SocketClientCallbacks): void {

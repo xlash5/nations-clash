@@ -298,6 +298,8 @@ export class HUD {
       this.pingEl.style.color = '#00ff88'
     } else if (display < 100) {
       this.pingEl.style.color = '#ffcc00'
+    } else if (display < 200) {
+      this.pingEl.style.color = '#ff8800'
     } else {
       this.pingEl.style.color = '#ff3333'
     }
