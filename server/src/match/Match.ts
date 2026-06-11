@@ -5,7 +5,7 @@ import { Team } from './Team.js'
 import { Player } from './Player.js'
 import { updatePhysics, kick } from './physics.js'
 import { updateAI } from './ai.js'
-import { getAbsoluteFormationPositions } from '../data/formations.js'
+import { getAbsoluteFormationPositions, type FormationName } from '../data/formations.js'
 import { updateCollisions } from './collision.js'
 import { checkGoal, type GoalResult } from './goalDetection.js'
 import { standingTackle, slideTackle, shouldFoul } from './tackling.js'
@@ -56,6 +56,8 @@ export class Match {
     config: MatchConfig,
     hostPlayerId: string,
     guestPlayerId: string,
+    homeFormation: FormationName = '4-4-2',
+    awayFormation: FormationName = '4-4-2',
   ) {
     this.io = io
     this.roomCode = roomCode
@@ -83,6 +85,9 @@ export class Match {
 
     this.teamA = new Team('home', hostPlayerId)
     this.teamB = new Team('away', guestPlayerId)
+
+    this.teamA.formationName = homeFormation
+    this.teamB.formationName = awayFormation
 
     this.ball = {
       position: { x: 0, y: 0, z: 0 },

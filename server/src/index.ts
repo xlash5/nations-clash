@@ -1,9 +1,10 @@
 import { createServer } from 'http'
 import { Server } from 'socket.io'
-import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, serializeRoom, areBothReady, selectTeam, areBothTeamsSelected, assignHomeAway, getTeamSelection } from './rooms.js'
+import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, serializeRoom, areBothReady, selectTeam, areBothTeamsSelected, assignHomeAway, getTeamSelection, selectFormation, areBothFormationsSelected, getFormationSelection } from './rooms.js'
 import { Match } from './match/Match.js'
 import { TEAMS } from './data/teams.js'
-import type { MatchConfig, TeamData } from '../../shared/types.js'
+import { getFormationNames } from './data/formations.js'
+import type { MatchConfig, TeamData, FormationName } from '../../shared/types.js'
 
 const httpServer = createServer()
 
@@ -69,11 +70,32 @@ io.on('connection', (socket) => {
           away: { ...away, teamData: awayTeam },
         })
 
+        const formationNames: FormationName[] = getFormationNames()
+        io.to(currentRoomCode).emit('match:formationSelect', { formations: formationNames })
+      }
+    } catch {
+      // invalid selection
+    }
+  })
+
+  socket.on('match:selectFormation', ({ formation }: { formation: string }) => {
+    if (!currentRoomCode) return
+    try {
+      selectFormation(currentRoomCode, socket.id, formation)
+      io.to(currentRoomCode).emit('formation:selected', { playerId: socket.id, formation })
+
+      if (areBothFormationsSelected(currentRoomCode)) {
+        const [home, away] = assignHomeAway(currentRoomCode)
+        const homeTeam = TEAMS.find((t) => t.id === home.teamId)!
+        const awayTeam = TEAMS.find((t) => t.id === away.teamId)!
+        const homeFormation = getFormationSelection(currentRoomCode, home.playerId)!.formation!
+        const awayFormation = getFormationSelection(currentRoomCode, away.playerId)!.formation!
+
         const config: MatchConfig = { mode: 'time', duration: 120, goalsToWin: 5 }
-        const match = new Match(io, currentRoomCode, config, home.playerId, away.playerId)
+        const match = new Match(io, currentRoomCode, config, home.playerId, away.playerId, homeFormation as FormationName, awayFormation as FormationName)
         activeMatches.set(currentRoomCode, match)
         match.start()
-        io.to(currentRoomCode).emit('match:start', { config, homeTeam, awayTeam, homePlayerId: home.playerId, awayPlayerId: away.playerId })
+        io.to(currentRoomCode).emit('match:start', { config, homeTeam, awayTeam, homePlayerId: home.playerId, awayPlayerId: away.playerId, homeFormation, awayFormation })
       }
     } catch {
       // invalid selection

@@ -41,10 +41,16 @@ export interface GoalEventPayload {
   }
 }
 
+export type FormationName = '4-4-2' | '4-3-3' | '3-5-2' | '4-2-3-1' | '5-3-2'
+
 export interface MatchConfig {
   mode: 'time' | 'goals'
   duration: number  // seconds for time mode
   goalsToWin: number  // for goals mode
+}
+
+export interface FormationSelectPayload {
+  formations: FormationName[]
 }
 
 export interface PlayerInput {

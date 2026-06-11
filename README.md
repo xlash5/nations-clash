@@ -69,7 +69,9 @@ npm run typecheck  # TypeScript compiler check
 5. When both are ready, the **Team Select** screen appears with 32 World Cup teams
 6. Each player clicks a team card (flag, name, kit colours) to select
 7. Both players see each other's selection in real time
-8. Home/away is assigned deterministically; both selected → match starts
+8. Home/away is assigned deterministically; both selected → **Formation Select** screen appears
+9. Each player picks a formation (4-4-2, 4-3-3, 3-5-2, 4-2-3-1, 5-3-2) with a mini-pitch diagram showing player positions
+10. Both players see each other's formation in real time; both selected → match starts
 
 ## 3D Pitch
 
@@ -323,6 +325,22 @@ Server-side AI for non-human players in `server/src/match/ai.ts` with formation 
 ### Test Coverage
 
 34 unit tests cover formation positions (all 5 formations, boundary checks), AI state transitions (HOLD/CHASE/RETREAT), GK positioning (goal line, interpolation, clamping, dive logic), and integration (possession-based states, velocity cap, pitch clamping).
+
+## Formation Select Screen
+
+After both players select a team, the **Formation Select** screen appears in `client/src/ui/FormationSelect.ts`:
+
+- **Five formations**: 4-4-2, 4-3-3, 3-5-2, 4-2-3-1, 5-3-2 displayed as clickable cards
+- **Mini-pitch diagram**: each card has a Canvas 2D pitch visualisation with dots for player positions (GK highlighted in yellow)
+- **Selection flow**: click a card to select; opponent's pick shown in amber; both selected → `match:start` emitted
+- **Server-side**: `match:selectFormation` handler stores per-player formation in `rooms.ts`; when both selected, creates the `Match` instance with the chosen formations
+- **Network events**:
+
+| Event | Direction | Payload |
+|---|---|---|
+| `match:formationSelect` | S→C | `{ formations: FormationName[] }` |
+| `match:selectFormation` | C→S | `{ formation: string }` |
+| `formation:selected` | S→C | `{ playerId, formation }` |
 
 ## Teams Data
 

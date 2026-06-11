@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, selectTeam, areBothTeamsSelected, getTeamSelection, assignHomeAway, __resetRoomsForTest } from './rooms.js'
+import { createRoom, joinRoom, toggleReady, removePlayer, getRoom, selectTeam, areBothTeamsSelected, getTeamSelection, assignHomeAway, selectFormation, areBothFormationsSelected, getFormationSelection, __resetRoomsForTest } from './rooms.js'
 
 describe('rooms', () => {
   beforeEach(() => {
@@ -141,6 +141,51 @@ describe('rooms', () => {
 
     it('getTeamSelection returns undefined for non-existent room', () => {
       expect(getTeamSelection('XXXXXX', 'p1')).toBeUndefined()
+    })
+  })
+
+  describe('formation selection', () => {
+    it('selectFormation stores formation per player', () => {
+      const code = createRoom()
+      joinRoom(code, 'player-1')
+      joinRoom(code, 'player-2')
+      selectFormation(code, 'player-1', '4-3-3')
+      expect(getFormationSelection(code, 'player-1')!.formation).toBe('4-3-3')
+    })
+
+    it('selectFormation throws for invalid room', () => {
+      expect(() => selectFormation('XXXXXX', 'player-1', '4-4-2')).toThrow('Room not found')
+    })
+
+    it('selectFormation throws for player not in room', () => {
+      const code = createRoom()
+      joinRoom(code, 'player-1')
+      expect(() => selectFormation(code, 'player-3', '4-4-2')).toThrow('Player not in room')
+    })
+
+    it('areBothFormationsSelected returns false when only one player selected', () => {
+      const code = createRoom()
+      joinRoom(code, 'player-1')
+      joinRoom(code, 'player-2')
+      selectFormation(code, 'player-1', '4-3-3')
+      expect(areBothFormationsSelected(code)).toBe(false)
+    })
+
+    it('areBothFormationsSelected returns true when both players selected', () => {
+      const code = createRoom()
+      joinRoom(code, 'player-1')
+      joinRoom(code, 'player-2')
+      selectFormation(code, 'player-1', '4-3-3')
+      selectFormation(code, 'player-2', '4-4-2')
+      expect(areBothFormationsSelected(code)).toBe(true)
+    })
+
+    it('areBothFormationsSelected returns false for non-existent room', () => {
+      expect(areBothFormationsSelected('XXXXXX')).toBe(false)
+    })
+
+    it('getFormationSelection returns undefined for non-existent room', () => {
+      expect(getFormationSelection('XXXXXX', 'p1')).toBeUndefined()
     })
   })
 })

@@ -1,4 +1,4 @@
-import type { Position } from '../../../shared/types.js'
+import type { Position, FormationName } from '../../../shared/types.js'
 
 export const PITCH_HALF_LENGTH = 52.5
 export const PITCH_HALF_WIDTH = 34
@@ -9,7 +9,7 @@ export interface FormationSlot {
   role: string
 }
 
-export type FormationName = '4-4-2' | '4-3-3' | '3-5-2' | '4-2-3-1' | '5-3-2'
+export type { FormationName }
 
 export const FORMATIONS: Record<FormationName, FormationSlot[]> = {
   '4-4-2': [
