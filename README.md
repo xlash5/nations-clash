@@ -21,7 +21,8 @@ football/
 │   │       ├── physics.ts   # Ball physics engine
 │   │       ├── ai.ts        # AI behaviour (HOLD/CHASE/RETREAT states)
 │   │       ├── collision.ts # Collision detection (player-ball, ball-goal, player-player)
-│   │       └── goalDetection.ts # Goal detection (stub)
+│   │       ├── goalDetection.ts # Goal detection (stub)
+│   │       └── tackling.ts  # Standing + slide tackles, foul detection
 │   └── package.json
 ├── client/          # Vite + Three.js frontend
 │   ├── src/
@@ -375,6 +376,28 @@ Standing and slide tackles in `server/src/match/tackling.ts` with integration in
 
 26 unit tests cover standing tackle range/success, slide tackle range/success, foul probability distribution (standing vs slide), tackle rising-edge detection, cooldown blocking, slide state machine (duration, recovery), and movement blocking during slide/recovery.
 
+## Fouls & Free Kicks
+
+Server-side free kick set-piece logic in `server/src/match/Match.ts`:
+
+- **Foul trigger**: when a tackle fails (no ball contact), a random roll determines whether a foul occurred. Slide tackles foul more often than standing tackles.
+- **Free kick setup**: on foul, the phase transitions to `freeKick`. The ball is placed at the foul position, all fouling-team players are moved to at least 9.15 m from the ball (and behind it toward their own goal). The nearest outfield player on the fouled team is assigned as the free kick taker.
+- **Execution**: the fouled team's human-controlled player can shoot or pass using normal charge-based kick mechanics. After the kick, normal play resumes.
+- **Network**: a `game:event { type: 'foul', position, foulingTeam, fouledTeam }` is emitted to both clients.
+- **Client overlay**: a brief "FREE KICK" text overlay is shown for ~2 seconds on foul.
+
+### Exported methods
+
+| Method | Description |
+|---|---|
+| `startFreeKick(foulPosition, fouledTeam, foulingTeam)` | Transitions phase, places ball, moves players, assigns taker |
+| `tickFreeKick()` | Per-tick update during free kick (processes inputs, awaits kick) |
+| `executeFreeKick(kickRequest)` | Applies kick impulse and resumes normal play |
+
+### Test Coverage
+
+9 unit tests cover phase transition, ball placement, opposing player distance enforcement, taker assignment, tick idle behaviour, shoot/pass kick execution, lastTouch tracking, and foul event emission.
+
 ## Network Events
 
 | Event | Direction | Payload |
@@ -390,7 +413,7 @@ Standing and slide tackles in `server/src/match/tackling.ts` with integration in
 | `game:input` | C→S | `{ keys: bitmask, chargeType, chargeTimestamp }` |
 | `game:state` | S→C | `{ players[], ball, score, clock, phase }` |
 | `game:goal` | S→C | `{ scorer, team, isOwnGoal, replayData }` |
-| `game:event` | S→C | `{ type, ...data }` |
+| `game:event` | S→C | `{ type: 'foul', position, foulingTeam, fouledTeam }` or `{ type: 'kickoff'|'halftime'|'fulltime'|'countdown', ... }` |
 
 ## Server-Side Game Loop
 

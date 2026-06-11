@@ -11,7 +11,7 @@ import { checkGoal, type GoalResult } from './goalDetection.js'
 import { standingTackle, slideTackle, shouldFoul } from './tackling.js'
 import { SLIDE_DURATION } from './Player.js'
 
-export type MatchPhase = 'preMatch' | 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
+export type MatchPhase = 'preMatch' | 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime' | 'freeKick'
 
 export interface GoalLog {
   playerId: string | null
@@ -44,6 +44,11 @@ export class Match {
   private replayBuffer: GameStateSnapshot[]
   private readonly MAX_REPLAY_SNAPSHOTS = 300
   private prevSwitchPlayer: Map<string, boolean>
+  private freeKickPosition: Position | null
+  private freeKickFouledTeam: 'home' | 'away' | null
+  private freeKickFoulingTeam: 'home' | 'away' | null
+  private freeKickTakerId: string | null
+  private previousPhase: MatchPhase | null
 
   constructor(
     io: Server,
@@ -70,6 +75,11 @@ export class Match {
     this.kickoffSide = 'home'
     this.replayBuffer = []
     this.prevSwitchPlayer = new Map()
+    this.freeKickPosition = null
+    this.freeKickFouledTeam = null
+    this.freeKickFoulingTeam = null
+    this.freeKickTakerId = null
+    this.previousPhase = null
 
     this.teamA = new Team('home', hostPlayerId)
     this.teamB = new Team('away', guestPlayerId)
@@ -112,6 +122,9 @@ export class Match {
         break
       case 'halftime':
         this.tickHalftime()
+        break
+      case 'freeKick':
+        this.tickFreeKick()
         break
       case 'fulltime':
         this.broadcast()
@@ -240,6 +253,123 @@ export class Match {
 
     this.goalCooldown = false
     this.lastTouch = null
+  }
+
+  private startFreeKick(foulPosition: Position, fouledTeam: 'home' | 'away', foulingTeam: 'home' | 'away'): void {
+    this.previousPhase = this.phase
+    this.phase = 'freeKick'
+    this.freeKickPosition = { ...foulPosition }
+    this.freeKickFouledTeam = fouledTeam
+    this.freeKickFoulingTeam = foulingTeam
+
+    this.ball = {
+      position: { ...foulPosition },
+      velocity: { x: 0, y: 0, z: 0 },
+      spin: { x: 0, y: 0, z: 0 },
+    }
+
+    const fouledTeamObj = fouledTeam === 'home' ? this.teamA : this.teamB
+    const foulingTeamObj = foulingTeam === 'home' ? this.teamA : this.teamB
+
+    const nearest = this.getNearestOutfieldPlayer(fouledTeamObj)
+    if (nearest) {
+      const idx = fouledTeamObj.players.indexOf(nearest)
+      const currentIdx = fouledTeamObj.humanControlledIndex
+      fouledTeamObj.players[currentIdx].isHumanControlled = false
+      nearest.isHumanControlled = true
+      fouledTeamObj.humanControlledIndex = idx
+      this.freeKickTakerId = nearest.id
+    }
+
+    const MIN_DIST = 9.15
+    for (const player of foulingTeamObj.players) {
+      const dx = player.position.x - foulPosition.x
+      const dz = player.position.z - foulPosition.z
+      const dist = Math.sqrt(dx * dx + dz * dz)
+
+      if (dist < MIN_DIST) {
+        const len = Math.sqrt(dx * dx + dz * dz)
+        const nx = len > 0.001 ? dx / len : 1
+        const nz = len > 0.001 ? dz / len : 0
+        player.position.x = foulPosition.x + nx * MIN_DIST
+        player.position.z = foulPosition.z + nz * MIN_DIST
+      }
+
+      if (foulingTeam === 'home' && player.position.z > foulPosition.z) {
+        player.position.z = foulPosition.z - Math.max(MIN_DIST, Math.abs(player.position.z - foulPosition.z))
+      } else if (foulingTeam === 'away' && player.position.z < foulPosition.z) {
+        player.position.z = foulPosition.z + Math.max(MIN_DIST, Math.abs(player.position.z - foulPosition.z))
+      }
+
+      player.velocity = { x: 0, y: 0, z: 0 }
+    }
+
+    this.io.to(this.roomCode).emit('game:event', { type: 'foul', position: foulPosition, foulingTeam, fouledTeam })
+  }
+
+  private tickFreeKick(): void {
+    this.applyPlayerInputs()
+
+    const fouledTeamObj = this.freeKickFouledTeam === 'home' ? this.teamA : this.teamB
+    const player = fouledTeamObj.players[fouledTeamObj.humanControlledIndex]
+    if (player) {
+      const kickRequest = player.consumeKickRequest()
+      if (kickRequest) {
+        this.executeFreeKick(kickRequest)
+      }
+    }
+
+    this.broadcast()
+  }
+
+  private executeFreeKick(kickRequest: { type: 'shoot' | 'pass'; power: number }): void {
+    const fouledTeamObj = this.freeKickFouledTeam === 'home' ? this.teamA : this.teamB
+    const player = fouledTeamObj.players[fouledTeamObj.humanControlledIndex]
+    if (!player) return
+
+    this.lastTouch = { playerId: player.id, team: player.team }
+
+    const facingDir = {
+      x: Math.sin(player.rotation),
+      y: 0,
+      z: Math.cos(player.rotation),
+    }
+
+    if (kickRequest.type === 'shoot') {
+      this.ball = kick(this.ball, facingDir, kickRequest.power)
+    } else if (kickRequest.type === 'pass') {
+      const teammates = fouledTeamObj.players.filter((p) => p.id !== player.id)
+      let nearest: typeof player | null = null
+      let nearestDist = Infinity
+      for (const tm of teammates) {
+        const dx = tm.position.x - player.position.x
+        const dz = tm.position.z - player.position.z
+        const dist = Math.sqrt(dx * dx + dz * dz)
+        if (dist < nearestDist) {
+          nearestDist = dist
+          nearest = tm
+        }
+      }
+      let kickDir = facingDir
+      if (nearest && nearestDist > 0) {
+        const dx = nearest.position.x - player.position.x
+        const dz = nearest.position.z - player.position.z
+        const toTm = { x: dx / nearestDist, z: dz / nearestDist }
+        const dot = facingDir.x * toTm.x + facingDir.z * toTm.z
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot)))
+        if (angle <= Math.PI / 6) {
+          kickDir = { x: toTm.x, y: 0, z: toTm.z }
+        }
+      }
+      this.ball = kick(this.ball, kickDir, kickRequest.power)
+    }
+
+    this.phase = this.previousPhase ?? 'firstHalf'
+    this.previousPhase = null
+    this.freeKickPosition = null
+    this.freeKickFouledTeam = null
+    this.freeKickFoulingTeam = null
+    this.freeKickTakerId = null
   }
 
   private updateLastTouchFromCollisions(): void {
@@ -394,7 +524,7 @@ export class Match {
       const tackledOpponent = allPlayers.find((p) => p.team !== player.team && p.hasBall)
       if (!tackledOpponent) {
         if (shouldFoul(tackleRequest.type)) {
-          this.io.to(this.roomCode).emit('game:event', { type: 'foul' })
+          this.startFreeKick(player.position, player.team === 'home' ? 'away' : 'home', player.team)
         }
         continue
       }
@@ -411,7 +541,7 @@ export class Match {
           this.ball.velocity = { ...result.ballPopDirection }
         }
       } else if (result.foul) {
-        this.io.to(this.roomCode).emit('game:event', { type: 'foul' })
+        this.startFreeKick(tackledOpponent.position, tackledOpponent.team, player.team)
       }
     }
   }

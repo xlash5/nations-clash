@@ -22,6 +22,11 @@ export interface MatchStartPayload {
   config: { mode: string; duration: number; goalsToWin: number }
 }
 
+export interface GameEventPayload {
+  type: string
+  [key: string]: unknown
+}
+
 export interface SocketClientCallbacks {
   onRoomCreated: (payload: RoomPayload) => void
   onRoomJoined: (payload: RoomJoinedPayload) => void
@@ -30,6 +35,7 @@ export interface SocketClientCallbacks {
   onMatchStart: (payload: MatchStartPayload) => void
   onGameState: (state: GameState) => void
   onGameGoal: (payload: GoalEventPayload) => void
+  onGameEvent: (payload: GameEventPayload) => void
 }
 
 export class SocketClient {
@@ -47,6 +53,7 @@ export class SocketClient {
     this.socket.on('match:start', (payload) => this.callbacks.onMatchStart(payload))
     this.socket.on('game:state', (payload) => this.callbacks.onGameState(payload))
     this.socket.on('game:goal', (payload) => this.callbacks.onGameGoal(payload))
+    this.socket.on('game:event', (payload) => this.callbacks.onGameEvent(payload))
   }
 
   setCallbacks(callbacks: SocketClientCallbacks): void {
