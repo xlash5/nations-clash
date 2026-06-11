@@ -28,6 +28,9 @@ jobs:
       - run: npm run build
 
       - name: Deploy to Railway
-        uses: bervProject/railway-deploy@0.2.0-beta
+        uses: docker://ghcr.io/railwayapp/cli:latest
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         with:
-          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          entrypoint: railway
+          args: up --detach
