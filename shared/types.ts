@@ -60,5 +60,26 @@ export interface PlayerInput {
   switchPlayer: boolean
 }
 
+export type ValidRole =
+  | 'GK' | 'CB' | 'LB' | 'RB' | 'LWB' | 'RWB'
+  | 'CDM' | 'CM' | 'LM' | 'RM'
+  | 'CAM' | 'LW' | 'RW'
+  | 'ST' | 'CF'
+
+export interface PlayerData {
+  position: ValidRole
+  name?: string
+}
+
+export interface TeamData {
+  id: string
+  name: string
+  flagEmoji: string
+  homeColor: string
+  awayColor: string
+  formation: string
+  players: PlayerData[]
+}
+
 export const TICK_MS = 1000 / 60
 export const TICK_S = TICK_MS / 1000

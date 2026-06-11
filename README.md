@@ -13,7 +13,8 @@ football/
 │   │   ├── index.ts        # Entry point, Socket.io setup + room events
 │   │   ├── rooms.ts        # Room management (create, join, ready, disconnect)
 │   │   ├── data/
-│   │   │   └── formations.ts # 5 formation templates (4-4-2, 4-3-3, 3-5-2, 4-2-3-1, 5-3-2)
+│   │   │   ├── formations.ts # 5 formation templates (4-4-2, 4-3-3, 3-5-2, 4-2-3-1, 5-3-2)
+│   │   │   └── teams.ts      # 32 World Cup teams with kits, formations, and players
 │   │   └── match/
 │   │       ├── Match.ts     # 60 Hz authoritative game loop
 │   │       ├── Player.ts    # Player state (position, velocity, stamina)
@@ -43,7 +44,7 @@ football/
 │   ├── index.html
 │   └── package.json
 ├── shared/
-│   └── types.ts     # Types shared between client & server
+│   └── types.ts     # Types shared between client & server (GameState, TeamData, PlayerData, etc.)
 ├── tasks/           # Task breakdown (excluded from git)
 ├── spec.md          # Project specification (excluded from git)
 └── package.json     # Root workspace config with scripts
@@ -318,6 +319,35 @@ Server-side AI for non-human players in `server/src/match/ai.ts` with formation 
 ### Test Coverage
 
 34 unit tests cover formation positions (all 5 formations, boundary checks), AI state transitions (HOLD/CHASE/RETREAT), GK positioning (goal line, interpolation, clamping, dive logic), and integration (possession-based states, velocity cap, pitch clamping).
+
+## Teams Data
+
+32 World Cup teams are defined in `server/src/data/teams.ts`:
+
+- **32 teams** with names, flag emoji, home/away kit colours, default formation, and 11 players each
+- **Real team colours**: each team's home and away colours approximate their real-world kits
+- **Formations**: each team has a default formation from the 5 available templates
+- **Players**: each team has exactly 11 players (1 GK + 10 outfield) with position roles
+- **Unique IDs**: each team has a unique `id` used for selection and match setup
+
+### Usage
+
+```ts
+import { TEAMS } from '../data/teams.js'
+
+// All 32 teams
+console.log(TEAMS.length) // 32
+
+// Find a team by id
+const england = TEAMS.find(t => t.id === 'england')
+
+// Get home kit colour
+const homeColour = england.homeColor // '#FFFFFF'
+```
+
+### Test Coverage
+
+17 data validation tests cover team count, required fields, player count, valid roles, unique IDs, hex colour format, and formation references. 6 formation tests cover count, slot count, GK presence, and position bounds.
 
 ## Collision Detection
 
