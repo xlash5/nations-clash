@@ -1,6 +1,6 @@
 import { Server } from 'socket.io'
 import type { MatchConfig, GameState, GameStateSnapshot, PlayerInput, Position } from '../../../shared/types.js'
-import { TICK_MS, TICK_S } from '../../../shared/types.js'
+import { TICK_MS, TICK_S, DISCONNECT_TIMEOUT } from '../../../shared/types.js'
 import { Team } from './Team.js'
 import { Player } from './Player.js'
 import { updatePhysics, kick } from './physics.js'
@@ -49,6 +49,9 @@ export class Match {
   private freeKickFoulingTeam: 'home' | 'away' | null
   private freeKickTakerId: string | null
   private previousPhase: MatchPhase | null
+  private paused: boolean
+  private disconnectedPlayers: Set<string>
+  private disconnectTimers: Map<string, number>
 
   constructor(
     io: Server,
@@ -82,6 +85,9 @@ export class Match {
     this.freeKickFoulingTeam = null
     this.freeKickTakerId = null
     this.previousPhase = null
+    this.paused = false
+    this.disconnectedPlayers = new Set()
+    this.disconnectTimers = new Map()
 
     this.teamA = new Team('home', hostPlayerId)
     this.teamB = new Team('away', guestPlayerId)
@@ -113,7 +119,83 @@ export class Match {
     return this.intervalId !== null
   }
 
+  onPlayerDisconnect(playerId: string): void {
+    if (this.phase === 'fulltime') return
+
+    this.disconnectedPlayers.add(playerId)
+    this.disconnectTimers.set(playerId, DISCONNECT_TIMEOUT)
+    this.paused = true
+
+    const opponentId = this.teamA.humanPlayerId === playerId
+      ? this.teamB.humanPlayerId
+      : this.teamA.humanPlayerId
+
+    this.io.to(this.roomCode).emit('game:event', {
+      type: 'player_disconnected',
+      playerId,
+      timeoutMs: DISCONNECT_TIMEOUT * 1000,
+    })
+  }
+
+  onPlayerReconnect(playerId: string): void {
+    if (!this.disconnectedPlayers.has(playerId)) return
+
+    this.disconnectedPlayers.delete(playerId)
+    this.disconnectTimers.delete(playerId)
+    this.paused = false
+
+    this.io.to(this.roomCode).emit('game:event', {
+      type: 'player_reconnected',
+      playerId,
+    })
+  }
+
+  updatePlayerId(oldId: string, newId: string): void {
+    if (this.teamA.humanPlayerId === oldId) {
+      ;(this.teamA as any).humanPlayerId = newId
+    }
+    if (this.teamB.humanPlayerId === oldId) {
+      ;(this.teamB as any).humanPlayerId = newId
+    }
+    if (this.freeKickTakerId === oldId) {
+      this.freeKickTakerId = newId
+    }
+
+    const input = this.inputs.get(oldId)
+    if (input) {
+      this.inputs.delete(oldId)
+      this.inputs.set(newId, input)
+    }
+
+    const prevSwitch = this.prevSwitchPlayer.get(oldId)
+    if (prevSwitch !== undefined) {
+      this.prevSwitchPlayer.delete(oldId)
+      this.prevSwitchPlayer.set(newId, prevSwitch)
+    }
+
+    if (this.disconnectedPlayers.has(oldId)) {
+      this.disconnectedPlayers.delete(oldId)
+      this.disconnectedPlayers.add(newId)
+    }
+
+    const timer = this.disconnectTimers.get(oldId)
+    if (timer !== undefined) {
+      this.disconnectTimers.delete(oldId)
+      this.disconnectTimers.set(newId, timer)
+    }
+  }
+
+  isPaused(): boolean {
+    return this.paused
+  }
+
   private tick(): void {
+    if (this.paused) {
+      this.tickDisconnectTimers()
+      this.broadcast()
+      return
+    }
+
     switch (this.phase) {
       case 'preMatch':
         this.tickPreMatch()
@@ -131,6 +213,41 @@ export class Match {
       case 'fulltime':
         this.broadcast()
         break
+    }
+  }
+
+  private tickDisconnectTimers(): void {
+    const expired: string[] = []
+
+    for (const [playerId, remaining] of this.disconnectTimers) {
+      const newRemaining = remaining - TICK_S
+      if (newRemaining <= 0) {
+        expired.push(playerId)
+      } else {
+        this.disconnectTimers.set(playerId, newRemaining)
+      }
+    }
+
+    for (const playerId of expired) {
+      this.disconnectTimers.delete(playerId)
+      this.disconnectedPlayers.delete(playerId)
+
+      const winnerTeam = this.teamA.humanPlayerId === playerId ? this.teamB : this.teamA
+      const loserTeam = this.teamA.humanPlayerId === playerId ? this.teamA : this.teamB
+
+      this.phase = 'fulltime'
+
+      this.io.to(this.roomCode).emit('game:event', {
+        type: 'fulltime',
+        score: { ...this.score },
+        goals: [...this.goals],
+        homeTeamName: winnerTeam.id === 'home' ? this.homeTeamName : this.awayTeamName,
+        awayTeamName: loserTeam.id === 'home' ? this.homeTeamName : this.awayTeamName,
+        winner: winnerTeam.id,
+      })
+
+      this.stop()
+      this.paused = false
     }
   }
 

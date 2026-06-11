@@ -21,9 +21,31 @@ export class HUD {
   private miniMapCanvas: HTMLCanvasElement
   private miniMapCtx: CanvasRenderingContext2D | null
   private miniMapVisible: boolean
+  private disconnectOverlay: HTMLDivElement
+  private disconnectTimerInterval: ReturnType<typeof setInterval> | null
 
   constructor() {
     this.miniMapVisible = true
+    this.disconnectTimerInterval = null
+
+    this.disconnectOverlay = document.createElement('div')
+    this.disconnectOverlay.id = 'hud-disconnect'
+    Object.assign(this.disconnectOverlay.style, {
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      color: '#ff4444',
+      fontFamily: 'monospace',
+      fontSize: '24px',
+      fontWeight: 'bold',
+      textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
+      textAlign: 'center',
+      display: 'none',
+      zIndex: '250',
+      pointerEvents: 'none',
+    })
+    this.disconnectOverlay.textContent = 'Opponent disconnected — waiting...'
 
     this.container = document.createElement('div')
     this.container.id = 'hud-container'
@@ -190,6 +212,7 @@ export class HUD {
     })
     this.miniMapCtx = this.miniMapCanvas.getContext('2d')
     this.container.appendChild(this.miniMapCanvas)
+    this.container.appendChild(this.disconnectOverlay)
 
     document.addEventListener('keydown', this.onKeyDown)
   }
@@ -278,6 +301,37 @@ export class HUD {
     } else {
       this.pingEl.style.color = '#ff3333'
     }
+  }
+
+  showDisconnectNotification(): void {
+    this.disconnectOverlay.textContent = 'Opponent disconnected'
+    this.disconnectOverlay.style.display = 'block'
+  }
+
+  showDisconnectCountdown(seconds: number): void {
+    const s = Math.ceil(seconds)
+    this.disconnectOverlay.textContent = `Opponent disconnected — ${s}s`
+    this.disconnectOverlay.style.display = 'block'
+  }
+
+  hideDisconnectNotification(): void {
+    this.disconnectOverlay.style.display = 'none'
+    if (this.disconnectTimerInterval) {
+      clearInterval(this.disconnectTimerInterval)
+      this.disconnectTimerInterval = null
+    }
+  }
+
+  startDisconnectCountdown(timeoutMs: number): void {
+    const endTime = Date.now() + timeoutMs
+    this.disconnectTimerInterval = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
+      if (remaining <= 0) {
+        this.disconnectOverlay.textContent = 'Opponent disconnected'
+      } else {
+        this.disconnectOverlay.textContent = `Opponent disconnected — ${remaining}s`
+      }
+    }, 200)
   }
 
   toggleMiniMap(): void {
