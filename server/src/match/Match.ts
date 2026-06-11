@@ -56,6 +56,8 @@ export class Match {
     config: MatchConfig,
     hostPlayerId: string,
     guestPlayerId: string,
+    public homeTeamName: string = 'Home',
+    public awayTeamName: string = 'Away',
   ) {
     this.io = io
     this.roomCode = roomCode
@@ -210,15 +212,27 @@ export class Match {
           this.emitEvent('halftime')
         } else if (this.phase === 'secondHalf') {
           this.phase = 'fulltime'
-          this.emitEvent('fulltime')
+          this.emitFulltime()
+          this.stop()
         }
       }
     } else if (this.config.mode === 'goals') {
       if (this.score.teamA >= this.config.goalsToWin || this.score.teamB >= this.config.goalsToWin) {
         this.phase = 'fulltime'
-        this.emitEvent('fulltime')
+        this.emitFulltime()
+        this.stop()
       }
     }
+  }
+
+  private emitFulltime(): void {
+    this.io.to(this.roomCode).emit('game:event', {
+      type: 'fulltime',
+      score: { ...this.score },
+      goals: [...this.goals],
+      homeTeamName: this.homeTeamName,
+      awayTeamName: this.awayTeamName,
+    })
   }
 
   private setupKickoff(): void {

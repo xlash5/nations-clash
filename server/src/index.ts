@@ -14,6 +14,16 @@ const io = new Server(httpServer, {
 const PORT = process.env.PORT ?? 3001
 
 const activeMatches = new Map<string, Match>()
+const rematchRequests = new Map<string, Set<string>>()
+
+interface MatchSession {
+  config: MatchConfig
+  homeTeam: TeamData
+  awayTeam: TeamData
+  homePlayerId: string
+  awayPlayerId: string
+}
+const matchSessions = new Map<string, MatchSession>()
 
 io.on('connection', (socket) => {
   let currentRoomCode: string | null = null
@@ -70,7 +80,10 @@ io.on('connection', (socket) => {
         })
 
         const config: MatchConfig = { mode: 'time', duration: 120, goalsToWin: 5 }
-        const match = new Match(io, currentRoomCode, config, home.playerId, away.playerId)
+        const session: MatchSession = { config, homeTeam, awayTeam, homePlayerId: home.playerId, awayPlayerId: away.playerId }
+        matchSessions.set(currentRoomCode, session)
+
+        const match = new Match(io, currentRoomCode, config, home.playerId, away.playerId, homeTeam.name, awayTeam.name)
         activeMatches.set(currentRoomCode, match)
         match.start()
         io.to(currentRoomCode).emit('match:start', { config, homeTeam, awayTeam, homePlayerId: home.playerId, awayPlayerId: away.playerId })
@@ -78,6 +91,64 @@ io.on('connection', (socket) => {
     } catch {
       // invalid selection
     }
+  })
+
+  socket.on('match:rematchRequest', () => {
+    if (!currentRoomCode) return
+    const room = getRoom(currentRoomCode)
+    if (!room) return
+
+    if (!rematchRequests.has(currentRoomCode)) {
+      rematchRequests.set(currentRoomCode, new Set())
+    }
+    rematchRequests.get(currentRoomCode)!.add(socket.id)
+
+    const requested = Array.from(rematchRequests.get(currentRoomCode)!)
+    io.to(currentRoomCode).emit('match:rematchStatus', { playerIds: requested })
+
+    if (requested.length === 2) {
+      rematchRequests.delete(currentRoomCode)
+
+      const oldMatch = activeMatches.get(currentRoomCode)
+      if (oldMatch) {
+        oldMatch.stop()
+        activeMatches.delete(currentRoomCode)
+      }
+
+      const session = matchSessions.get(currentRoomCode)
+      if (!session) return
+
+      const newMatch = new Match(io, currentRoomCode, session.config, session.homePlayerId, session.awayPlayerId, session.homeTeam.name, session.awayTeam.name)
+      activeMatches.set(currentRoomCode, newMatch)
+
+      io.to(currentRoomCode).emit('match:rematchAccepted')
+      newMatch.start()
+      io.to(currentRoomCode).emit('match:start', {
+        config: session.config,
+        homeTeam: session.homeTeam,
+        awayTeam: session.awayTeam,
+        homePlayerId: session.homePlayerId,
+        awayPlayerId: session.awayPlayerId,
+      })
+    }
+  })
+
+  socket.on('match:leave', () => {
+    if (!currentRoomCode) return
+
+    const match = activeMatches.get(currentRoomCode)
+    if (match) {
+      match.stop()
+      activeMatches.delete(currentRoomCode)
+    }
+
+    const { room, wasLastPlayer } = removePlayer(currentRoomCode, socket.id)
+    if (!wasLastPlayer && room) {
+      socket.to(currentRoomCode).emit('player:left', { playerId: socket.id })
+      io.to(currentRoomCode).emit('room:joined', serializeRoom(room))
+    }
+
+    rematchRequests.delete(currentRoomCode)
   })
 
   socket.on('game:input', (data: { keys: number; chargeType: string | null; chargeTimestamp: number }) => {
@@ -100,11 +171,19 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     if (currentRoomCode) {
+      const match = activeMatches.get(currentRoomCode)
+      if (match) {
+        match.stop()
+        activeMatches.delete(currentRoomCode)
+      }
+
       const { room, wasLastPlayer } = removePlayer(currentRoomCode, socket.id)
       if (!wasLastPlayer && room) {
         socket.to(currentRoomCode).emit('player:left', { playerId: socket.id })
         io.to(currentRoomCode).emit('room:joined', serializeRoom(room))
       }
+
+      rematchRequests.delete(currentRoomCode)
     }
   })
 })
