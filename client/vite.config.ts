@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
-import { compression } from 'vite-plugin-compression'
+import compression from 'vite-plugin-compression'
 
 export default defineConfig({
   server: {
