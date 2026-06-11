@@ -33,7 +33,8 @@ football/
 │   │       ├── Pitch.ts           # 3D pitch, goals, stadium shell, lighting
 │   │       ├── PlayerMesh.ts      # Low-poly humanoid player model
 │   │       ├── BallMesh.ts        # Icosahedron soccer ball
-│   │       └── CameraController.ts # Tele-broadcast camera with lerp + flip
+│   │       ├── CameraController.ts # Tele-broadcast camera with lerp + flip
+│   │       └── Input.ts           # Keyboard capture + bitmask packing
 │   ├── public/audio/ # SFX files (placeholder)
 │   ├── index.html
 │   └── package.json
@@ -112,6 +113,57 @@ cam.update(ballPosition, delta)
 
 // At halftime
 cam.flipSide()
+```
+
+## Input System
+
+Client-side keyboard input capture and bitmask packing in `client/src/game/Input.ts`:
+
+- **Keyboard listener**: tracks pressed/released keys via `keydown`/`keyup` DOM events
+- **Keys**: Arrow Up/Down/Left/Right (or WASD), Shift (sprint), J (shoot), K (pass), L (tackle), U (slide tackle), I (switch player)
+- **Bitmask packing**: each key maps to a power-of-two bit; `getBitmask()` returns a single `number` with all pressed keys OR'd together
+- **Dual binding**: arrow keys and WASD both map to movement bits; either Shift key maps to sprint
+- **Default prevention**: arrow keys and Shift are prevented from scrolling the page
+- **Lifecycle**: `attach()` / `detach()` manage event listener registration
+
+### Bitmask Layout
+
+| Bit | Value | Key(s) | Action |
+|-----|-------|--------|--------|
+| 0   | 1     | ArrowUp / W | Move up |
+| 1   | 2     | ArrowDown / S | Move down |
+| 2   | 4     | ArrowLeft / A | Move left |
+| 3   | 8     | ArrowRight / D | Move right |
+| 4   | 16    | Shift (left/right) | Sprint |
+| 5   | 32    | J | Shoot |
+| 6   | 64    | K | Pass |
+| 7   | 128   | L | Tackle |
+| 8   | 256   | U | Slide tackle |
+| 9   | 512   | I | Switch player |
+
+### Broadcast Loop
+
+The input loop in `main.ts` runs at ~60 Hz via `setInterval`:
+1. Reads the bitmask from `Input.getBitmask()`
+2. Detects charge start/release for shoot (J) and pass (K)
+3. Updates the HUD power bar during charging
+4. Emits `game:input` via `SocketClient.sendInput(keys, chargeType, chargeTimestamp)`
+
+### Server Reception
+
+The `game:input` event handler in `server/src/index.ts` unpacks the bitmask into a `PlayerInput` struct and calls `match.handleInput()`. Unknown bits are safely ignored. 21 unit tests cover bitmask packing/unpacking for every key and combination.
+
+### Usage
+
+```ts
+import { Input, KEY_SHOOT } from './game/Input'
+
+const input = new Input()
+input.attach()
+
+// Each frame
+const bitmask = input.getBitmask()
+const isShooting = !!(bitmask & KEY_SHOOT)
 ```
 
 ## Charge-Based Kick System (Shoot & Pass)
