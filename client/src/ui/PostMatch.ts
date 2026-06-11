@@ -1,3 +1,5 @@
+import { audio } from '../game/Audio'
+
 export interface PostMatchCallbacks {
   onRematch: () => void
   onLeave: () => void
@@ -128,6 +130,7 @@ export class PostMatch {
     })
     this.rematchBtn.addEventListener('click', () => {
       if (this._hasRequestedRematch) return
+      audio.play('menu-click')
       this._hasRequestedRematch = true
       this.rematchBtn.disabled = true
       this.rematchBtn.style.opacity = '0.5'
@@ -150,6 +153,7 @@ export class PostMatch {
       cursor: 'pointer',
     })
     this.leaveBtn.addEventListener('click', () => {
+      audio.play('menu-click')
       callbacks.onLeave()
     })
     btnRow.appendChild(this.leaveBtn)

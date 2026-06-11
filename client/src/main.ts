@@ -1,4 +1,5 @@
 import { SocketClient, type RoomJoinedPayload, type MatchStartPayload, type TeamSelectPayload, type TeamSelectedPayload, type BothTeamsSelectedPayload, type RematchStatusPayload, type FulltimePayload } from './network/SocketClient'
+import { audio } from './game/Audio'
 import { MainMenu } from './ui/MainMenu'
 import { HowToPlay } from './ui/HowToPlay'
 import { Settings } from './ui/Settings'
@@ -57,9 +58,13 @@ function storePlayerIds(payload: MatchStartPayload): void {
     onRematchAccepted: () => {},
   })
 
+audio.preload()
 input.attach()
 
 function startGameInputLoop(hud: HUD): ReturnType<typeof setInterval> {
+  let wasCharging = false
+  let lastPower = 0
+
   const sendIntervalId = setInterval(() => {
     const bitmask = input.getBitmask()
     const isCharging = !!(bitmask & KEY_SHOOT) || !!(bitmask & KEY_PASS)
@@ -71,12 +76,16 @@ function startGameInputLoop(hud: HUD): ReturnType<typeof setInterval> {
       }
       const elapsed = (performance.now() - chargeStartTime) / 1000
       const power = Math.min(1, elapsed)
+      lastPower = power
+      wasCharging = true
       hud.showPowerBar(true)
       hud.setPowerBar(power)
     } else {
-      if (chargeType) {
+      if (wasCharging) {
+        audio.play('kick', lastPower)
         chargeType = null
         chargeStartTime = 0
+        wasCharging = false
       }
       hud.showPowerBar(false)
     }
@@ -223,6 +232,7 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
       hud.setPing(client.getLatency())
     },
     onGameGoal: (payload: GoalEventPayload) => {
+      audio.play('goal')
       showGoalFlash(gameContainer, () => {
         replayController.start(payload.replayData.snapshots, {
           onState: () => {},
@@ -233,13 +243,24 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
     },
     onGameEvent: (payload) => {
       if (payload.type === 'fulltime') {
+        audio.play('whistle-long')
         clearInterval(intervalId)
         hud.unmount()
         showPostMatch(payload as unknown as FulltimePayload, gameContainer)
         return
       }
       if (payload.type === 'foul') {
+        audio.play('whistle-short')
         showFreeKickOverlay(gameContainer)
+      }
+      if (payload.type === 'kickoff') {
+        audio.play('whistle-short')
+      }
+      if (payload.type === 'halftime') {
+        audio.play('whistle-long')
+      }
+      if (payload.type === 'countdown') {
+        audio.play('countdown-beep')
       }
     },
     onRematchStatus: () => {},

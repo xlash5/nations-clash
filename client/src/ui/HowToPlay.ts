@@ -1,3 +1,5 @@
+import { audio } from '../game/Audio'
+
 export interface HowToPlayCallbacks {
   onBack: () => void
 }
@@ -151,7 +153,10 @@ export class HowToPlay {
       borderRadius: '6px',
       cursor: 'pointer',
     })
-    backBtn.addEventListener('click', () => callbacks.onBack())
+    backBtn.addEventListener('click', () => {
+      audio.play('menu-click')
+      callbacks.onBack()
+    })
     this.container.appendChild(backBtn)
   }
 

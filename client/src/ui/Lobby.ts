@@ -1,3 +1,5 @@
+import { audio } from '../game/Audio'
+
 export interface LobbyCallbacks {
   onToggleReady: () => void
 }
@@ -29,7 +31,10 @@ export class Lobby {
 
     this.readyBtn = document.createElement('button')
     this.readyBtn.textContent = 'Ready'
-    this.readyBtn.addEventListener('click', () => callbacks.onToggleReady())
+    this.readyBtn.addEventListener('click', () => {
+      audio.play('menu-click')
+      callbacks.onToggleReady()
+    })
     this.container.appendChild(this.readyBtn)
   }
 

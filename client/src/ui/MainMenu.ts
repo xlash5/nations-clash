@@ -1,3 +1,5 @@
+import { audio } from '../game/Audio'
+
 export interface MainMenuCallbacks {
   onCreateRoom: () => void
   onJoinRoom: (roomCode: string) => void
@@ -20,7 +22,10 @@ export class MainMenu {
 
     const createBtn = document.createElement('button')
     createBtn.textContent = 'Create Room'
-    createBtn.addEventListener('click', () => callbacks.onCreateRoom())
+    createBtn.addEventListener('click', () => {
+      audio.play('menu-click')
+      callbacks.onCreateRoom()
+    })
     this.container.appendChild(createBtn)
 
     const joinRow = document.createElement('div')
@@ -33,6 +38,7 @@ export class MainMenu {
     joinBtn.addEventListener('click', () => {
       const code = this.input.value.trim().toUpperCase()
       if (code.length === 6) {
+        audio.play('menu-click')
         callbacks.onJoinRoom(code)
       }
     })
@@ -54,7 +60,10 @@ export class MainMenu {
       borderRadius: '6px',
       cursor: 'pointer',
     })
-    howToPlayBtn.addEventListener('click', () => callbacks.onHowToPlay?.())
+    howToPlayBtn.addEventListener('click', () => {
+      audio.play('menu-click')
+      callbacks.onHowToPlay?.()
+    })
     this.container.appendChild(howToPlayBtn)
 
     const settingsBtn = document.createElement('button')
@@ -71,9 +80,11 @@ export class MainMenu {
       borderRadius: '6px',
       cursor: 'pointer',
     })
-    settingsBtn.addEventListener('click', () => callbacks.onSettings?.())
+    settingsBtn.addEventListener('click', () => {
+      audio.play('menu-click')
+      callbacks.onSettings?.()
+    })
     this.container.appendChild(settingsBtn)
-
     this.errorEl = document.createElement('div')
     this.errorEl.id = 'room-error'
     this.errorEl.style.color = 'red'

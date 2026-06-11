@@ -1,4 +1,5 @@
 import { getSettings, setVolume, setFullscreen, setQuality } from '../settings'
+import { audio } from '../game/Audio'
 
 export interface SettingsCallbacks {
   onBack: () => void
@@ -204,7 +205,10 @@ export class Settings {
       borderRadius: '6px',
       cursor: 'pointer',
     })
-    backBtn.addEventListener('click', () => callbacks.onBack())
+    backBtn.addEventListener('click', () => {
+      audio.play('menu-click')
+      callbacks.onBack()
+    })
     this.container.appendChild(backBtn)
   }
 
