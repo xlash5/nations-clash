@@ -30,6 +30,17 @@ export interface GameState {
   phase: 'preMatch' | 'firstHalf' | 'halftime' | 'secondHalf' | 'fulltime'
 }
 
+export type GameStateSnapshot = GameState
+
+export interface GoalEventPayload {
+  scorer: string | null
+  team: 'home' | 'away'
+  isOwnGoal: boolean
+  replayData: {
+    snapshots: GameStateSnapshot[]
+  }
+}
+
 export interface MatchConfig {
   mode: 'time' | 'goals'
   duration: number  // seconds for time mode

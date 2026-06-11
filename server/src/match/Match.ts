@@ -1,5 +1,5 @@
 import { Server } from 'socket.io'
-import type { MatchConfig, GameState, PlayerInput, Position } from '../../../shared/types.js'
+import type { MatchConfig, GameState, GameStateSnapshot, PlayerInput, Position } from '../../../shared/types.js'
 import { TICK_MS, TICK_S } from '../../../shared/types.js'
 import { Team } from './Team.js'
 import { updatePhysics, kick } from './physics.js'
@@ -37,6 +37,8 @@ export class Match {
   private halftimeTimer: number
   private goalPauseTimer: number
   private kickoffSide: 'home' | 'away'
+  private replayBuffer: GameStateSnapshot[]
+  private readonly MAX_REPLAY_SNAPSHOTS = 300
 
   constructor(
     io: Server,
@@ -61,6 +63,7 @@ export class Match {
     this.halftimeTimer = 0
     this.goalPauseTimer = 0
     this.kickoffSide = 'home'
+    this.replayBuffer = []
 
     this.teamA = new Team('home', hostPlayerId)
     this.teamB = new Team('away', guestPlayerId)
@@ -297,7 +300,7 @@ export class Match {
       scorer: goal.scorer,
       team: goal.team,
       isOwnGoal: goal.isOwnGoal,
-      replayData: {},
+      replayData: this.getReplayData(),
     })
   }
 
@@ -306,7 +309,9 @@ export class Match {
   }
 
   private broadcast(): void {
-    this.io.to(this.roomCode).emit('game:state', this.getState())
+    const state = this.getState()
+    this.pushSnapshot(state)
+    this.io.to(this.roomCode).emit('game:state', state)
   }
 
   private applyPlayerInputs(): void {
@@ -365,6 +370,17 @@ export class Match {
         this.ball = kick(this.ball, kickDir, kickRequest.power)
       }
     }
+  }
+
+  private pushSnapshot(state: GameState): void {
+    this.replayBuffer.push(state)
+    if (this.replayBuffer.length > this.MAX_REPLAY_SNAPSHOTS) {
+      this.replayBuffer.shift()
+    }
+  }
+
+  getReplayData(): { snapshots: GameStateSnapshot[] } {
+    return { snapshots: [...this.replayBuffer] }
   }
 
   getState(): GameState {

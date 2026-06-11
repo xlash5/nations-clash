@@ -2,7 +2,9 @@ import { SocketClient, type RoomJoinedPayload, type MatchStartPayload } from './
 import { MainMenu } from './ui/MainMenu'
 import { Lobby } from './ui/Lobby'
 import { HUD } from './game/HUD'
+import { ReplayController } from './game/ReplayController'
 import { Input, KEY_SHOOT, KEY_PASS } from './game/Input'
+import type { GoalEventPayload } from '../../shared/types.js'
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 
@@ -31,6 +33,7 @@ const client = new SocketClient(SERVER_URL, {
   },
   onMatchStart: () => {},
   onGameState: () => {},
+  onGameGoal: () => {},
 })
 
 input.attach()
@@ -63,7 +66,47 @@ function startGameInputLoop(hud: HUD): ReturnType<typeof setInterval> {
   return sendIntervalId
 }
 
-function showGame(hud: HUD): ReturnType<typeof setInterval> {
+function createGoalFlash(): HTMLDivElement {
+  const el = document.createElement('div')
+  el.id = 'goal-flash'
+  el.textContent = 'GOAL!'
+  Object.assign(el.style, {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    color: 'white',
+    fontFamily: 'monospace',
+    fontSize: '72px',
+    fontWeight: 'bold',
+    textShadow: '4px 4px 8px rgba(0,0,0,0.9)',
+    pointerEvents: 'none',
+    zIndex: '200',
+    display: 'none',
+    opacity: '0',
+    transition: 'opacity 0.15s ease-in',
+  })
+  return el
+}
+
+function showGoalFlash(container: HTMLElement, callback: () => void): void {
+  const existing = container.querySelector('#goal-flash') as HTMLDivElement
+  const flash = existing ?? createGoalFlash()
+  if (!existing) container.appendChild(flash)
+
+  flash.style.display = 'block'
+  flash.style.opacity = '1'
+
+  setTimeout(() => {
+    flash.style.opacity = '0'
+    setTimeout(() => {
+      flash.style.display = 'none'
+      callback()
+    }, 300)
+  }, 1500)
+}
+
+function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; replayController: ReplayController } {
   if (currentScreen) {
     currentScreen.unmount()
     currentScreen = null
@@ -93,8 +136,28 @@ function showGame(hud: HUD): ReturnType<typeof setInterval> {
   appRoot.appendChild(gameContainer)
   hud.mount(gameContainer)
 
+  const replayController = new ReplayController()
+
+  client.setCallbacks({
+    onRoomCreated: () => {},
+    onRoomJoined: () => {},
+    onRoomError: () => {},
+    onPlayerLeft: () => {},
+    onMatchStart: () => {},
+    onGameState: () => {},
+    onGameGoal: (payload: GoalEventPayload) => {
+      showGoalFlash(gameContainer, () => {
+        replayController.start(payload.replayData.snapshots, {
+          onState: () => {},
+          onComplete: () => {},
+          onSkip: () => {},
+        })
+      })
+    },
+  })
+
   const intervalId = startGameInputLoop(hud)
-  return intervalId
+  return { intervalId, replayController }
 }
 
 function showMenu(): void {
@@ -112,6 +175,7 @@ function showMenu(): void {
         onPlayerLeft: () => {},
         onMatchStart: () => {},
         onGameState: () => {},
+        onGameGoal: () => {},
       })
       client.createRoom()
     },
@@ -123,6 +187,7 @@ function showMenu(): void {
         onPlayerLeft: () => {},
         onMatchStart: () => {},
         onGameState: () => {},
+        onGameGoal: () => {},
       })
       client.joinRoom(code)
     },
@@ -142,6 +207,8 @@ function showLobby(roomCode: string, players: { id: string; ready: boolean }[] =
   })
 
   let gameIntervalId: ReturnType<typeof setInterval> | null = null
+  let replayController: ReplayController | null = null
+  let replayKeyHandler: ((e: KeyboardEvent) => void) | null = null
 
   client.setCallbacks({
     onRoomCreated: () => {},
@@ -154,9 +221,20 @@ function showLobby(roomCode: string, players: { id: string; ready: boolean }[] =
     onMatchStart: (_payload: MatchStartPayload) => {
       lobby.unmount()
       const hud = new HUD()
-      gameIntervalId = showGame(hud)
+      const game = showGame(hud)
+      gameIntervalId = game.intervalId
+      replayController = game.replayController
+
+      replayKeyHandler = (e: KeyboardEvent) => {
+        if (e.code === 'Space' && replayController?.isActive()) {
+          e.preventDefault()
+          replayController.skip()
+        }
+      }
+      document.addEventListener('keydown', replayKeyHandler)
     },
     onGameState: () => {},
+    onGameGoal: () => {},
   })
 
   lobby.setRoomCode(roomCode)

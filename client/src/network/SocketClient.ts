@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client'
-import type { GameState } from '../../../shared/types.js'
+import type { GameState, GoalEventPayload } from '../../../shared/types.js'
 
 export interface RoomPayload {
   roomCode: string
@@ -29,6 +29,7 @@ export interface SocketClientCallbacks {
   onPlayerLeft: (payload: PlayerLeftPayload) => void
   onMatchStart: (payload: MatchStartPayload) => void
   onGameState: (state: GameState) => void
+  onGameGoal: (payload: GoalEventPayload) => void
 }
 
 export class SocketClient {
@@ -45,6 +46,7 @@ export class SocketClient {
     this.socket.on('player:left', (payload) => this.callbacks.onPlayerLeft(payload))
     this.socket.on('match:start', (payload) => this.callbacks.onMatchStart(payload))
     this.socket.on('game:state', (payload) => this.callbacks.onGameState(payload))
+    this.socket.on('game:goal', (payload) => this.callbacks.onGameGoal(payload))
   }
 
   setCallbacks(callbacks: SocketClientCallbacks): void {
