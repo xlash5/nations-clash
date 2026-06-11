@@ -26,6 +26,8 @@ describe('SocketClient', () => {
     onMatchTeamSelect: vi.fn(),
     onTeamSelected: vi.fn(),
     onBothTeamsSelected: vi.fn(),
+    onMatchFormationSelect: vi.fn(),
+    onFormationSelected: vi.fn(),
     onGameState: vi.fn(),
     onGameGoal: vi.fn(),
     onGameEvent: vi.fn(),
@@ -45,6 +47,8 @@ describe('SocketClient', () => {
     expect(mockOn).toHaveBeenCalledWith('match:teamSelect', expect.any(Function))
     expect(mockOn).toHaveBeenCalledWith('team:selected', expect.any(Function))
     expect(mockOn).toHaveBeenCalledWith('bothTeamsSelected', expect.any(Function))
+    expect(mockOn).toHaveBeenCalledWith('match:formationSelect', expect.any(Function))
+    expect(mockOn).toHaveBeenCalledWith('formation:selected', expect.any(Function))
     expect(mockOn).toHaveBeenCalledWith('match:start', expect.any(Function))
     expect(mockOn).toHaveBeenCalledWith('game:state', expect.any(Function))
     expect(mockOn).toHaveBeenCalledWith('game:goal', expect.any(Function))
@@ -144,6 +148,24 @@ describe('SocketClient', () => {
     expect(callbacks.onBothTeamsSelected).toHaveBeenCalledWith(payload)
   })
 
+  it('emits match:selectFormation on selectFormation()', () => {
+    const client = new SocketClient('http://localhost:3001', callbacks)
+    client.selectFormation('4-3-3')
+    expect(mockEmit).toHaveBeenCalledWith('match:selectFormation', { formation: '4-3-3' })
+  })
+
+  it('calls onMatchFormationSelect when match:formationSelect fires', () => {
+    new SocketClient('http://localhost:3001', callbacks)
+    mockOnHandlers['match:formationSelect']({ formations: ['4-4-2', '4-3-3'] })
+    expect(callbacks.onMatchFormationSelect).toHaveBeenCalledWith({ formations: ['4-4-2', '4-3-3'] })
+  })
+
+  it('calls onFormationSelected when formation:selected fires', () => {
+    new SocketClient('http://localhost:3001', callbacks)
+    mockOnHandlers['formation:selected']({ playerId: 'p1', formation: '4-3-3' })
+    expect(callbacks.onFormationSelected).toHaveBeenCalledWith({ playerId: 'p1', formation: '4-3-3' })
+  })
+
   it('setCallbacks updates active callbacks', () => {
     const client =     new SocketClient('http://localhost:3001', callbacks)
     const newCallbacks = {
@@ -155,6 +177,8 @@ describe('SocketClient', () => {
       onMatchTeamSelect: vi.fn(),
       onTeamSelected: vi.fn(),
       onBothTeamsSelected: vi.fn(),
+      onMatchFormationSelect: vi.fn(),
+      onFormationSelected: vi.fn(),
       onGameState: vi.fn(),
       onGameGoal: vi.fn(),
       onGameEvent: vi.fn(),

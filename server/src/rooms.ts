@@ -10,6 +10,10 @@ export interface TeamSelection {
   teamId: string | null
 }
 
+export interface FormationSelection {
+  formation: string | null
+}
+
 export interface HomeAwayAssignment {
   playerId: string
   teamId: string
@@ -20,6 +24,7 @@ export interface Room {
   code: string
   players: Map<string, PlayerInfo>
   teamSelections: Map<string, TeamSelection>
+  formationSelections: Map<string, FormationSelection>
 }
 
 const rooms = new Map<string, Room>()
@@ -43,7 +48,7 @@ export function createRoom(): string {
     code = generateCode()
   } while (rooms.has(code))
 
-  rooms.set(code, { code, players: new Map(), teamSelections: new Map() })
+  rooms.set(code, { code, players: new Map(), teamSelections: new Map(), formationSelections: new Map() })
   return code
 }
 
@@ -140,6 +145,27 @@ export function assignHomeAway(code: string): [HomeAwayAssignment, HomeAwayAssig
     { playerId: homePlayerId, teamId: homeTeamId, side: 'home' },
     { playerId: awayPlayerId, teamId: awayTeamId, side: 'away' },
   ]
+}
+
+export function selectFormation(code: string, playerId: string, formation: string): Room {
+  const room = rooms.get(code)
+  if (!room) throw new Error('Room not found')
+  if (!room.players.has(playerId)) throw new Error('Player not in room')
+  room.formationSelections.set(playerId, { formation })
+  return room
+}
+
+export function areBothFormationsSelected(code: string): boolean {
+  const room = rooms.get(code)
+  if (!room || room.players.size < 2) return false
+  if (room.formationSelections.size < 2) return false
+  return Array.from(room.formationSelections.values()).every((s) => s.formation !== null)
+}
+
+export function getFormationSelection(code: string, playerId: string): FormationSelection | undefined {
+  const room = rooms.get(code)
+  if (!room) return undefined
+  return room.formationSelections.get(playerId)
 }
 
 export function hasTeamPhaseStarted(code: string): boolean {
