@@ -2,7 +2,7 @@ import { Server } from 'socket.io'
 import type { MatchConfig, GameState, PlayerInput, Position } from '../../../shared/types.js'
 import { TICK_MS, TICK_S } from '../../../shared/types.js'
 import { Team } from './Team.js'
-import { updatePhysics } from './physics.js'
+import { updatePhysics, kick } from './physics.js'
 import { updateAI } from './ai.js'
 import { updateCollisions } from './collision.js'
 import { checkGoal } from './goalDetection.js'
@@ -72,6 +72,9 @@ export class Match {
   private tick(): void {
     if (this.phase === 'fulltime' || this.phase === 'halftime') return
 
+    this.applyPlayerInputs()
+    this.processKickRequests()
+
     const state = this.getState()
 
     updatePhysics(this, state)
@@ -98,6 +101,61 @@ export class Match {
 
   private broadcast(): void {
     this.io.to(this.roomCode).emit('game:state', this.getState())
+  }
+
+  private applyPlayerInputs(): void {
+    for (const team of [this.teamA, this.teamB]) {
+      const input = this.inputs.get(team.humanPlayerId)
+      if (!input) continue
+      const player = team.players[1]
+      if (!player) continue
+      const cameraSide: -1 | 1 = team.id === 'home' ? -1 : 1
+      player.applyInput(input, cameraSide, TICK_S)
+    }
+  }
+
+  private processKickRequests(): void {
+    for (const team of [this.teamA, this.teamB]) {
+      const player = team.players[1]
+      if (!player) continue
+      const kickRequest = player.consumeKickRequest()
+      if (!kickRequest) continue
+
+      const facingDir = {
+        x: Math.sin(player.rotation),
+        y: 0,
+        z: Math.cos(player.rotation),
+      }
+
+      if (kickRequest.type === 'shoot') {
+        this.ball = kick(this.ball, facingDir, kickRequest.power)
+      } else if (kickRequest.type === 'pass') {
+        const teammates = team.players.filter((p) => p.id !== player.id)
+        let nearest: typeof player | null = null
+        let nearestDist = Infinity
+        for (const tm of teammates) {
+          const dx = tm.position.x - player.position.x
+          const dz = tm.position.z - player.position.z
+          const dist = Math.sqrt(dx * dx + dz * dz)
+          if (dist < nearestDist) {
+            nearestDist = dist
+            nearest = tm
+          }
+        }
+        let kickDir = facingDir
+        if (nearest && nearestDist > 0) {
+          const dx = nearest.position.x - player.position.x
+          const dz = nearest.position.z - player.position.z
+          const toTm = { x: dx / nearestDist, z: dz / nearestDist }
+          const dot = facingDir.x * toTm.x + facingDir.z * toTm.z
+          const angle = Math.acos(Math.max(-1, Math.min(1, dot)))
+          if (angle <= Math.PI / 6) {
+            kickDir = { x: toTm.x, y: 0, z: toTm.z }
+          }
+        }
+        this.ball = kick(this.ball, kickDir, kickRequest.power)
+      }
+    }
   }
 
   getState(): GameState {

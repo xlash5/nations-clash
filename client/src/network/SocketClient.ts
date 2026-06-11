@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client'
+import type { GameState } from '../../../shared/types.js'
 
 export interface RoomPayload {
   roomCode: string
@@ -17,11 +18,17 @@ export interface PlayerLeftPayload {
   playerId: string
 }
 
+export interface MatchStartPayload {
+  config: { mode: string; duration: number; goalsToWin: number }
+}
+
 export interface SocketClientCallbacks {
   onRoomCreated: (payload: RoomPayload) => void
   onRoomJoined: (payload: RoomJoinedPayload) => void
   onRoomError: (payload: RoomErrorPayload) => void
   onPlayerLeft: (payload: PlayerLeftPayload) => void
+  onMatchStart: (payload: MatchStartPayload) => void
+  onGameState: (state: GameState) => void
 }
 
 export class SocketClient {
@@ -36,6 +43,8 @@ export class SocketClient {
     this.socket.on('room:joined', (payload) => this.callbacks.onRoomJoined(payload))
     this.socket.on('room:error', (payload) => this.callbacks.onRoomError(payload))
     this.socket.on('player:left', (payload) => this.callbacks.onPlayerLeft(payload))
+    this.socket.on('match:start', (payload) => this.callbacks.onMatchStart(payload))
+    this.socket.on('game:state', (payload) => this.callbacks.onGameState(payload))
   }
 
   setCallbacks(callbacks: SocketClientCallbacks): void {
@@ -52,6 +61,10 @@ export class SocketClient {
 
   toggleReady(): void {
     this.socket.emit('player:ready')
+  }
+
+  sendInput(keys: number, chargeType: string | null, chargeTimestamp: number): void {
+    this.socket.emit('game:input', { keys, chargeType, chargeTimestamp })
   }
 
   disconnect(): void {

@@ -56,7 +56,7 @@ io.on('connection', (socket) => {
     }
   })
 
-  socket.on('game:input', (data: { keys: number; timestamp: number }) => {
+  socket.on('game:input', (data: { keys: number; chargeType: string | null; chargeTimestamp: number }) => {
     if (!currentRoomCode) return
     const match = activeMatches.get(currentRoomCode)
     if (!match) return
