@@ -762,6 +762,28 @@ The authoritative game simulation runs at **60 ticks/sec** in `server/src/match/
 7. Each team has 11 players (1 GK + 10 outfield), first outfield player is human-controlled
 8. Inputs flow via `game:input` bitmask events, consumed each tick
 
+## Production Build Optimisations
+
+The Vite production build (`npm run build`) applies several optimisations:
+
+- **Code splitting**: Three.js is extracted into a separate chunk via `manualChunks`, keeping the game logic and UI in their own bundles for better caching
+- **Minification**: enabled by default via Vite (esbuild for JS/CSS)
+- **Gzip compression**: `vite-plugin-compression` generates `.gz` variants of all assets (≥1 KB) at build time
+- **Tree-shaking**: unused Three.js imports are removed by Rollup
+- **Bundle size check**: `npm run build:check-size` verifies the client JS bundle is <500 KB gzipped and the server bundle is <2 MB gzipped. This check runs automatically in CI after every build.
+
+### Build Output
+
+```
+client/dist/
+├── assets/
+│   ├── index-*.js           # Game + UI code
+│   ├── three-*.js           # Three.js vendor chunk
+│   └── *.gz                 # Gzipped variants (served by CDN)
+server/dist/
+└── *.js                     # Compiled server code
+```
+
 ## CI/CD Pipeline
 
 GitHub Actions workflows are defined in `.github/workflows/`:
