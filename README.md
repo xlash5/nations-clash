@@ -34,7 +34,8 @@ football/
 │   │       ├── PlayerMesh.ts      # Low-poly humanoid player model
 │   │       ├── BallMesh.ts        # Icosahedron soccer ball
 │   │       ├── CameraController.ts # Tele-broadcast camera with lerp + flip
-│   │       └── Input.ts           # Keyboard capture + bitmask packing
+│   │       ├── Input.ts           # Keyboard capture + bitmask packing
+│   │       └── ReplayController.ts # Slow-motion goal replay playback
 │   ├── public/audio/ # SFX files (placeholder)
 │   ├── index.html
 │   └── package.json
@@ -180,6 +181,46 @@ Server-side charge kicking in `server/src/match/Player.ts` with execution in `Ma
 
 49 unit tests cover charge start, accumulation, release, shoot/pass overlap, and power proportionality.
 
+## Slow-Motion Replay
+
+After a goal, a slow-motion replay plays the last ~5 seconds of action from a slightly elevated angle.
+
+### Server-Side Replay Buffer
+
+In `server/src/match/Match.ts`:
+
+- **Buffer**: the last 300 `GameState` snapshots (5 seconds at 60 Hz) are retained
+- **`pushSnapshot(state)`**: appends a snapshot to the buffer; oldest entries are evicted when the cap is exceeded
+- **`getReplayData()`**: returns a copy of the buffered snapshots as `{ snapshots: GameStateSnapshot[] }`
+- **Snapshot capture**: `broadcast()` pushes a snapshot before emitting `game:state` each tick
+- **On goal**: `awardGoal()` includes `replayData` in the `game:goal` event sent to both clients
+
+### Client-Side Replay Controller
+
+In `client/src/game/ReplayController.ts`:
+
+- **Playback**: iterates through snapshots at 15 ticks/s (¼ speed of real-time)
+- **Skip**: `skip()` immediately ends playback and triggers the skip callback
+- **Overlay**: shows "Press SPACE to skip" text during replay
+
+### Goal Sequence Flow
+
+1. Goal detected on server → `game:goal` emitted with `replayData`
+2. Client shows "GOAL!" flash overlay for ~1.5s
+3. Replay starts playing back buffered snapshots in slow motion
+4. Player can press `Space` to skip the replay
+5. After replay ends (auto or skip), match resumes with kickoff
+
+### Network Event
+
+| Event | Direction | Payload |
+|---|---|---|
+| `game:goal` | S→C | `{ scorer, team, isOwnGoal, replayData: { snapshots[] } }` |
+
+### Test Coverage
+
+6 unit tests cover replay buffer push, capacity capping (300), oldest-entry eviction, copy semantics, tick integration, and goal event inclusion.
+
 ## Ball Physics
 
 Server-side ball physics engine in `server/src/match/physics.ts`:
@@ -254,7 +295,7 @@ Ball-player collision, deflection, and goal-post ricochet are covered by **25 un
 ## Network Events
 
 | Event | Direction | Payload |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | `room:create` | C→S | — |
 | `room:created` | S→C | `{ roomCode }` |
 | `room:join` | C→S | `{ roomCode }` |
@@ -265,6 +306,8 @@ Ball-player collision, deflection, and goal-post ricochet are covered by **25 un
 | `match:start` | S→C | `{ config }` |
 | `game:input` | C→S | `{ keys: bitmask, chargeType, chargeTimestamp }` |
 | `game:state` | S→C | `{ players[], ball, score, clock, phase }` |
+| `game:goal` | S→C | `{ scorer, team, isOwnGoal, replayData }` |
+| `game:event` | S→C | `{ type, ...data }` |
 
 ## Server-Side Game Loop
 

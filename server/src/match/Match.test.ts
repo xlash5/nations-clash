@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Server } from 'socket.io'
 import { Match, type MatchPhase } from './Match.js'
-import type { MatchConfig } from '../../../shared/types.js'
+import type { GameState, MatchConfig } from '../../../shared/types.js'
 import { TICK_S } from '../../../shared/types.js'
 
 function createMockIo(): Server {
@@ -276,6 +276,72 @@ describe('Match', () => {
         ;(match as any).tick()
       }
       expect(match.ball.position).toEqual({ x: 0, y: 0, z: 0 })
+    })
+  })
+
+  describe('replay buffer', () => {
+    beforeEach(() => {
+      advanceThroughPreMatch(match, io)
+    })
+
+    it('pushSnapshot appends to buffer', () => {
+      const before = (match as any).getReplayData().snapshots.length
+      const state = match.getState()
+      ;(match as any).pushSnapshot(state)
+      const after = (match as any).getReplayData().snapshots.length
+      expect(after).toBe(before + 1)
+    })
+
+    it('buffer caps at 300 snapshots', () => {
+      ;(match as any).replayBuffer = []
+      const state = match.getState()
+      for (let i = 0; i < 310; i++) {
+        ;(match as any).pushSnapshot(state)
+      }
+      const data = (match as any).getReplayData()
+      expect(data.snapshots).toHaveLength(300)
+    })
+
+    it('oldest entries are evicted when buffer exceeds 300', () => {
+      ;(match as any).replayBuffer = []
+      for (let i = 0; i < 310; i++) {
+        const s = match.getState()
+        s.clock = i
+        ;(match as any).pushSnapshot(s)
+      }
+      const data = (match as any).getReplayData()
+      expect(data.snapshots[0].clock).toBe(10)
+      expect(data.snapshots[data.snapshots.length - 1].clock).toBe(309)
+    })
+
+    it('getReplayData returns copy of buffer', () => {
+      ;(match as any).replayBuffer = []
+      const state = match.getState()
+      ;(match as any).pushSnapshot(state)
+      const data1 = (match as any).getReplayData()
+      const data2 = (match as any).getReplayData()
+      expect(data1.snapshots).toHaveLength(1)
+      expect(data2.snapshots).toHaveLength(1)
+      data1.snapshots.push(state)
+      expect(data2.snapshots).toHaveLength(1)
+    })
+
+    it('tick pushes snapshot via broadcast', () => {
+      ;(match as any).tick()
+      const data = (match as any).getReplayData()
+      expect(data.snapshots.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('includes replayData in game:goal event', () => {
+      for (let i = 0; i < 100; i++) {
+        ;(match as any).tick()
+      }
+      const goal = { team: 'home' as const, scorer: 'home-3', isOwnGoal: false, side: 'positive' as const }
+      ;(match as any).awardGoal(goal)
+      const emitCalls = (io.to('ROOM01').emit as any).mock.calls
+      const goalCall = emitCalls.find((call: any[]) => call[0] === 'game:goal')
+      expect(goalCall).toBeDefined()
+      expect(goalCall[1].replayData.snapshots.length).toBeGreaterThan(0)
     })
   })
 
