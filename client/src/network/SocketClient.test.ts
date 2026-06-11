@@ -30,6 +30,8 @@ describe('SocketClient', () => {
     onGameState: vi.fn(),
     onGameGoal: vi.fn(),
     onGameEvent: vi.fn(),
+    onRematchStatus: vi.fn(),
+    onRematchAccepted: vi.fn(),
   }
 
   beforeEach(() => {
@@ -50,6 +52,8 @@ describe('SocketClient', () => {
     expect(mockOn).toHaveBeenCalledWith('game:state', expect.any(Function))
     expect(mockOn).toHaveBeenCalledWith('game:goal', expect.any(Function))
     expect(mockOn).toHaveBeenCalledWith('game:event', expect.any(Function))
+    expect(mockOn).toHaveBeenCalledWith('match:rematchStatus', expect.any(Function))
+    expect(mockOn).toHaveBeenCalledWith('match:rematchAccepted', expect.any(Function))
   })
 
   it('calls onRoomCreated when room:created fires', () => {
@@ -165,6 +169,8 @@ describe('SocketClient', () => {
       onGameState: vi.fn(),
       onGameGoal: vi.fn(),
       onGameEvent: vi.fn(),
+      onRematchStatus: vi.fn(),
+      onRematchAccepted: vi.fn(),
     }
     client.setCallbacks(newCallbacks)
     mockOnHandlers['room:created']({ roomCode: 'XYZ999' })

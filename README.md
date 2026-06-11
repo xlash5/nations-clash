@@ -33,7 +33,8 @@ football/
 │   │   ├── ui/
 │   │   │   ├── MainMenu.ts   # Create/Join room screen
 │   │   │   ├── Lobby.ts      # Player list + ready button
-│   │   │   └── TeamSelect.ts # 32-team grid with flag, name, kit colours
+│   │   │   ├── TeamSelect.ts # 32-team grid with flag, name, kit colours
+│   │   │   └── PostMatch.ts  # Post-match results screen + rematch/leave
 │   │   └── game/
 │   │       ├── Pitch.ts           # 3D pitch, goals, stadium shell, lighting
 │   │       ├── PlayerMesh.ts      # Low-poly humanoid player model
@@ -72,6 +73,8 @@ npm run typecheck  # TypeScript compiler check
 6. Each player clicks a team card (flag, name, kit colours) to select
 7. Both players see each other's selection in real time
 8. Home/away is assigned deterministically; both selected → match starts
+9. After fulltime, a **Post-Match** screen shows the final score and goal scorers
+10. Both players can click **Rematch** to start a new match with the same teams, or **Leave** to return to the main menu
 
 ## 3D Pitch
 
@@ -448,6 +451,33 @@ Server-side free kick set-piece logic in `server/src/match/Match.ts`:
 
 9 unit tests cover phase transition, ball placement, opposing player distance enforcement, taker assignment, tick idle behaviour, shoot/pass kick execution, lastTouch tracking, and foul event emission.
 
+## Post-Match Screen & Rematch Flow
+
+The post-match results screen in `client/src/ui/PostMatch.ts` is shown after fulltime:
+
+- **Score display**: large centered score line — `Brazil 3 — 2 Argentina`
+- **Goal scorers list**: each goal with scorer ID, team, and minute
+- **Rematch button**: sends `match:rematchRequest` to server; disabled after first click
+- **"Waiting for opponent..."**: shown after clicking rematch, before opponent agrees
+- **"Opponent wants a rematch!"**: shown when opponent clicks rematch first
+- **"Rematch accepted!"**: shown when both have agreed
+- **Leave button**: sends `match:leave`, returns to main menu
+- **Opponent left**: if opponent disconnects or leaves, status updates and returns to menu after 2s
+
+### Rematch Flow
+
+1. Match reaches fulltime → server emits `game:event { type: 'fulltime', score, goals, homeTeamName, awayTeamName }` and stops the match loop
+2. Both clients show the PostMatch screen
+3. Either player clicks Rematch → `match:rematchRequest` → server tracks agreement → `match:rematchStatus` with current requesters broadcast to both
+4. Server detects both players have agreed → stops old match, creates a new `Match` with same teams/config
+5. `match:rematchAccepted` then `match:start` emitted → both clients begin a new game
+
+### Server Handling
+
+- `rematchRequests: Map<string, Set<string>>` tracks per-room rematch status
+- `matchSessions: Map<string, MatchSession>` stores the original team/config for reuse
+- On `match:leave` or `disconnect`: match is stopped, player removed from room, opponent notified
+
 ## Network Events
 
 | Event | Direction | Payload |
@@ -468,6 +498,10 @@ Server-side free kick set-piece logic in `server/src/match/Match.ts`:
 | `game:state` | S→C | `{ players[], ball, score, clock, phase }` |
 | `game:goal` | S→C | `{ scorer, team, isOwnGoal, replayData }` |
 | `game:event` | S→C | `{ type: 'foul', position, foulingTeam, fouledTeam }` or `{ type: 'kickoff'|'halftime'|'fulltime'|'countdown', ... }` |
+| `match:rematchRequest` | C→S | — |
+| `match:rematchStatus` | S→C | `{ playerIds: string[] }` |
+| `match:rematchAccepted` | S→C | — |
+| `match:leave` | C→S | — |
 
 ## Server-Side Game Loop
 

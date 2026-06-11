@@ -222,9 +222,11 @@ describe('Match', () => {
     it('emits fulltime event on transition', () => {
       match.clock = TICK_S
       ;(match as any).tick()
-      expect(io.to('ROOM01').emit).toHaveBeenCalledWith('game:event', {
-        type: 'fulltime',
-      })
+      const allCalls = (io.to('ROOM01').emit as any).mock.calls
+      const fulltimeCall = allCalls.find(
+        (call: any[]) => call[0] === 'game:event' && call[1]?.type === 'fulltime',
+      )
+      expect(fulltimeCall).toBeDefined()
     })
   })
 
@@ -244,6 +246,39 @@ describe('Match', () => {
       const clockBefore = match.clock
       ;(match as any).tick()
       expect(match.clock).toBe(clockBefore)
+    })
+
+    it('emits fulltime with score and goals data', () => {
+      const emitCalls = (io.to('ROOM01').emit as any).mock.calls
+      const fulltimeCall = emitCalls.find(
+        (call: any[]) => call[0] === 'game:event' && call[1]?.type === 'fulltime',
+      )
+      expect(fulltimeCall).toBeDefined()
+      expect(fulltimeCall[1].score).toEqual({ teamA: 0, teamB: 0 })
+      expect(fulltimeCall[1].goals).toEqual([])
+      expect(fulltimeCall[1].homeTeamName).toBe('Home')
+      expect(fulltimeCall[1].awayTeamName).toBe('Away')
+    })
+
+    it('stops the game loop after fulltime', () => {
+      expect(match.isRunning()).toBe(false)
+    })
+  })
+
+  describe('fulltime with custom team names', () => {
+    it('emits team names in fulltime event', () => {
+      const namedMatch = new Match(io, 'ROOM02', defaultConfig({ mode: 'goals', goalsToWin: 1 }), 'host-id', 'guest-id', 'Brazil', 'Argentina')
+      advanceThroughPreMatch(namedMatch, io)
+      namedMatch.score.teamA = 1
+      ;(namedMatch as any).tick()
+
+      const emitCalls = (io.to('ROOM02').emit as any).mock.calls
+      const fulltimeCall = emitCalls.find(
+        (call: any[]) => call[0] === 'game:event' && call[1]?.type === 'fulltime',
+      )
+      expect(fulltimeCall).toBeDefined()
+      expect(fulltimeCall[1].homeTeamName).toBe('Brazil')
+      expect(fulltimeCall[1].awayTeamName).toBe('Argentina')
     })
   })
 

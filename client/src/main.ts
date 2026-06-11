@@ -1,7 +1,9 @@
-import { SocketClient, type RoomJoinedPayload, type MatchStartPayload, type TeamSelectPayload, type TeamSelectedPayload, type BothTeamsSelectedPayload } from './network/SocketClient'
+import { SocketClient, type RoomJoinedPayload, type MatchStartPayload, type TeamSelectPayload, type TeamSelectedPayload, type BothTeamsSelectedPayload, type RematchStatusPayload, type FulltimePayload } from './network/SocketClient'
 import { MainMenu } from './ui/MainMenu'
 import { Lobby } from './ui/Lobby'
 import { TeamSelect } from './ui/TeamSelect'
+import { PostMatch } from './ui/PostMatch'
+import type { GoalInfo } from './ui/PostMatch'
 import { HUD } from './game/HUD'
 import { ReplayController } from './game/ReplayController'
 import { Input, KEY_SHOOT, KEY_PASS } from './game/Input'
@@ -19,6 +21,24 @@ const input = new Input()
 let chargeStartTime = 0
 let chargeType: string | null = null
 
+let currentPlayerId: string | null = null
+let opponentPlayerId: string | null = null
+
+function storePlayerIds(payload: MatchStartPayload): void {
+  const selfId = client.getSocketId()
+  if (!selfId) return
+  if (payload.homePlayerId === selfId) {
+    currentPlayerId = selfId
+    opponentPlayerId = payload.awayPlayerId ?? null
+  } else if (payload.awayPlayerId === selfId) {
+    currentPlayerId = selfId
+    opponentPlayerId = payload.homePlayerId ?? null
+  } else {
+    currentPlayerId = selfId
+    opponentPlayerId = null
+  }
+}
+
   const client = new SocketClient(SERVER_URL, {
     onRoomCreated: () => {},
     onRoomJoined: () => {},
@@ -31,6 +51,8 @@ let chargeType: string | null = null
     onGameState: () => {},
     onGameGoal: () => {},
     onGameEvent: () => {},
+    onRematchStatus: () => {},
+    onRematchAccepted: () => {},
   })
 
 input.attach()
@@ -174,6 +196,7 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
   hud.mount(gameContainer)
 
   const replayController = new ReplayController()
+  const intervalId = startGameInputLoop(hud)
 
   const teamColors: Record<string, string> = { home: '#e63946', away: '#457b9d' }
 
@@ -207,14 +230,78 @@ function showGame(hud: HUD): { intervalId: ReturnType<typeof setInterval>; repla
       })
     },
     onGameEvent: (payload) => {
+      if (payload.type === 'fulltime') {
+        clearInterval(intervalId)
+        hud.unmount()
+        showPostMatch(payload as unknown as FulltimePayload, gameContainer)
+        return
+      }
       if (payload.type === 'foul') {
         showFreeKickOverlay(gameContainer)
       }
     },
+    onRematchStatus: () => {},
+    onRematchAccepted: () => {},
   })
 
-  const intervalId = startGameInputLoop(hud)
   return { intervalId, replayController }
+}
+
+function showPostMatch(payload: FulltimePayload, oldContainer: HTMLElement): void {
+  oldContainer.remove()
+
+  const goals: GoalInfo[] = (payload.goals ?? []).map((g: any) => ({
+    playerId: g.playerId ?? null,
+    team: g.team,
+    time: g.time,
+    isOwnGoal: g.isOwnGoal ?? false,
+  }))
+
+  const pm = new PostMatch(
+    payload.score ?? { teamA: 0, teamB: 0 },
+    goals,
+    payload.homeTeamName ?? 'Home',
+    payload.awayTeamName ?? 'Away',
+    {
+      onRematch: () => client.requestRematch(),
+      onLeave: () => {
+        client.leaveMatch()
+        showMenu()
+      },
+    },
+  )
+
+  currentScreen = pm
+  pm.mount(appRoot)
+
+  client.setCallbacks({
+    onRoomCreated: () => {},
+    onRoomJoined: () => {},
+    onRoomError: () => {},
+    onPlayerLeft: () => {
+      pm.showOpponentLeft()
+      setTimeout(() => showMenu(), 2000)
+    },
+    onMatchStart: (_payload: MatchStartPayload) => {
+      storePlayerIds(_payload)
+      pm.unmount()
+      const hud = new HUD()
+      showGame(hud)
+    },
+    onMatchTeamSelect: () => {},
+    onTeamSelected: () => {},
+    onBothTeamsSelected: () => {},
+    onGameState: () => {},
+    onGameGoal: () => {},
+    onGameEvent: () => {},
+    onRematchStatus: (rematchPayload: RematchStatusPayload) => {
+      const rematchPlayerIds = rematchPayload.playerIds
+      if (opponentPlayerId && rematchPlayerIds.includes(opponentPlayerId)) {
+        pm.setOpponentRematchRequested()
+      }
+    },
+    onRematchAccepted: () => {},
+  })
 }
 
 function showMenu(): void {
@@ -237,6 +324,8 @@ function showMenu(): void {
         onGameState: () => {},
         onGameGoal: () => {},
         onGameEvent: () => {},
+        onRematchStatus: () => {},
+        onRematchAccepted: () => {},
       })
       client.createRoom()
     },
@@ -253,6 +342,8 @@ function showMenu(): void {
         onGameState: () => {},
         onGameGoal: () => {},
         onGameEvent: () => {},
+        onRematchStatus: () => {},
+        onRematchAccepted: () => {},
       })
       client.joinRoom(code)
     },
@@ -284,6 +375,7 @@ function showLobby(roomCode: string, players: { id: string; ready: boolean }[] =
     onRoomError: () => {},
     onPlayerLeft: () => {},
     onMatchStart: (_payload: MatchStartPayload) => {
+      storePlayerIds(_payload)
       lobby.unmount()
       const hud = new HUD()
       const game = showGame(hud)
@@ -307,6 +399,8 @@ function showLobby(roomCode: string, players: { id: string; ready: boolean }[] =
     onGameState: () => {},
     onGameGoal: () => {},
     onGameEvent: () => {},
+    onRematchStatus: () => {},
+    onRematchAccepted: () => {},
   })
 
   lobby.setRoomCode(roomCode)
@@ -338,6 +432,7 @@ function showTeamSelect(teams: TeamSelectPayload['teams']): void {
     onRoomError: () => {},
     onPlayerLeft: () => {},
     onMatchStart: (_payload: MatchStartPayload) => {
+      storePlayerIds(_payload)
       ts.unmount()
       const hud = new HUD()
       const game = showGame(hud)
@@ -360,6 +455,8 @@ function showTeamSelect(teams: TeamSelectPayload['teams']): void {
     onGameState: () => {},
     onGameGoal: () => {},
     onGameEvent: () => {},
+    onRematchStatus: () => {},
+    onRematchAccepted: () => {},
   })
 
   ts.mount(appRoot)

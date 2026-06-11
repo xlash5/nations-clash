@@ -22,6 +22,8 @@ export interface MatchStartPayload {
   config: { mode: string; duration: number; goalsToWin: number }
   homeTeam?: TeamData
   awayTeam?: TeamData
+  homePlayerId?: string
+  awayPlayerId?: string
 }
 
 export interface TeamSelectPayload {
@@ -39,9 +41,21 @@ export interface BothTeamsSelectedPayload {
   away: { playerId: string; teamId: string; side: 'away'; teamData: TeamData }
 }
 
+export interface RematchStatusPayload {
+  playerIds: string[]
+}
+
 export interface GameEventPayload {
   type: string
   [key: string]: unknown
+}
+
+export interface FulltimePayload {
+  type: 'fulltime'
+  score: { teamA: number; teamB: number }
+  goals: { playerId: string | null; team: 'home' | 'away'; time: number; isOwnGoal: boolean }[]
+  homeTeamName: string
+  awayTeamName: string
 }
 
 export interface SocketClientCallbacks {
@@ -56,6 +70,8 @@ export interface SocketClientCallbacks {
   onGameState: (state: GameState) => void
   onGameGoal: (payload: GoalEventPayload) => void
   onGameEvent: (payload: GameEventPayload) => void
+  onRematchStatus: (payload: RematchStatusPayload) => void
+  onRematchAccepted: () => void
 }
 
 export class SocketClient {
@@ -78,10 +94,16 @@ export class SocketClient {
     this.socket.on('game:state', (payload) => this.callbacks.onGameState(payload))
     this.socket.on('game:goal', (payload) => this.callbacks.onGameGoal(payload))
     this.socket.on('game:event', (payload) => this.callbacks.onGameEvent(payload))
+    this.socket.on('match:rematchStatus', (payload) => this.callbacks.onRematchStatus(payload))
+    this.socket.on('match:rematchAccepted', () => this.callbacks.onRematchAccepted())
 
     this.socket.on('pong', (latency: number) => {
       this._latency = latency
     })
+  }
+
+  getSocketId(): string | undefined {
+    return this.socket.id
   }
 
   getLatency(): number {
@@ -106,6 +128,14 @@ export class SocketClient {
 
   selectTeam(teamId: string): void {
     this.socket.emit('match:selectTeam', { teamId })
+  }
+
+  requestRematch(): void {
+    this.socket.emit('match:rematchRequest')
+  }
+
+  leaveMatch(): void {
+    this.socket.emit('match:leave')
   }
 
   sendInput(keys: number, chargeType: string | null, chargeTimestamp: number): void {
