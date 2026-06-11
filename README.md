@@ -33,6 +33,7 @@ football/
 │   │   ├── ui/
 │   │   │   ├── MainMenu.ts   # Create/Join room + How to Play button
 │   │   │   ├── HowToPlay.ts  # Controls reference + game mechanics
+│   │   │   ├── Settings.ts   # Sound volume, fullscreen, quality preset
 │   │   │   ├── Lobby.ts      # Player list + ready button
 │   │   │   ├── TeamSelect.ts # 32-team grid with flag, name, kit colours
 │   │   │   └── PostMatch.ts  # Post-match results screen + rematch/leave
@@ -67,6 +68,17 @@ npm run typecheck  # TypeScript compiler check
 ### How to Play Screen
 
 A controls reference screen available from the Main Menu. Shows a table of all keyboard controls and explanations of charge-based kicking, player switching, and the stamina system.
+
+### Settings Screen
+
+A settings screen available from the Main Menu with the following options:
+
+- **Sound Volume**: slider (0–100%) persisted to `localStorage` under the `nations-clash-settings` key
+- **Fullscreen**: toggle checkbox that calls `requestFullscreen()` / `exitFullscreen()`
+- **Quality Preset**: dropdown (Low / Medium / High) persisted for future rendering quality selection
+- **Back** button returns to the Main Menu
+
+The settings object is managed by `client/src/settings.ts` and is accessible from other modules via `getSettings()`.
 
 ### Multiplayer Flow
 

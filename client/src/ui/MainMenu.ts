@@ -2,6 +2,7 @@ export interface MainMenuCallbacks {
   onCreateRoom: () => void
   onJoinRoom: (roomCode: string) => void
   onHowToPlay?: () => void
+  onSettings?: () => void
 }
 
 export class MainMenu {
@@ -55,6 +56,23 @@ export class MainMenu {
     })
     howToPlayBtn.addEventListener('click', () => callbacks.onHowToPlay?.())
     this.container.appendChild(howToPlayBtn)
+
+    const settingsBtn = document.createElement('button')
+    settingsBtn.id = 'settings-btn'
+    settingsBtn.textContent = 'Settings'
+    Object.assign(settingsBtn.style, {
+      marginTop: '8px',
+      padding: '10px 24px',
+      fontSize: '14px',
+      fontFamily: 'monospace',
+      backgroundColor: '#2a4a6a',
+      color: 'white',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: 'pointer',
+    })
+    settingsBtn.addEventListener('click', () => callbacks.onSettings?.())
+    this.container.appendChild(settingsBtn)
 
     this.errorEl = document.createElement('div')
     this.errorEl.id = 'room-error'
